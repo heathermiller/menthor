@@ -1,0 +1,566 @@
+package processing.parallel
+
+import scala.collection.mutable.{Map, HashMap}
+import scala.collection.mutable.ListBuffer
+
+import scala.actors.{Actor, TIMEOUT, OutputChannel, Debug}
+import Actor._
+
+// step: the step in which the message was produced
+// TODO: for distribution need to change Vertex[Data] into vertex ID
+case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
+  // TODO: step does not need to be visible in user code!
+  var step: Int = 0
+}
+
+// each Substep has a substep function and a reference to the previous Substep
+class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Substep[Data]) {
+  var next: Substep[Data] = null
+
+  // TODO: implement thenUntil(cond)
+  def then(block: => List[Message[Data]]): Substep[Data] = {
+    next = new Substep(() => block, this)
+    next
+  }
+
+  // TODO: merge crunch steps
+  def crunch(fun: (Data, Data) => Data): Substep[Data] = {
+    next = new CrunchStep(fun, this)
+    next
+  }
+
+  def size: Int = {
+    var currStep = firstSubstep
+    var count = 1
+    while (currStep.next != null) {
+      count += 1
+      currStep = currStep.next
+    }
+    count
+  }
+
+  private def firstSubstep = {
+    // follow refs back to the first substep
+    var currStep = this
+    while (currStep.previous != null)
+      currStep = currStep.previous
+    currStep
+  }
+
+  def fromHere(num: Int): Substep[Data] = {
+    if (num == 0)
+      this
+    else
+      this.next.fromHere(num - 1)
+  }
+
+  def apply(index: Int): Substep[Data] = {
+    val first = firstSubstep
+    if (index == 0) {
+      first
+    } else {
+      first.next.fromHere(index - 1)
+    }
+  }
+}
+
+class CrunchStep[Data](val cruncher: (Data, Data) => Data, previous: Substep[Data]) extends Substep[Data](null, previous)
+
+case class Crunch[Data](val cruncher: (Data, Data) => Data, val crunchResult: Data)
+
+case class CrunchResult[Data](res: Data)
+
+// To point out in paper: it's not a DSL for expressing/constructing/transforming graphs,
+// but rather a high-level API for graph /processing/.
+abstract class Vertex[Data](val label: String, initialValue: Data) {
+  // TODO: subclasses should not be able to mutate the list!
+  var neighbors: List[Vertex[Data]] = List()
+
+  var value: Data = initialValue
+
+  var graph: Graph[Data] = null
+
+  // graph has to initialize `worker` upon partitioning the list of vertices
+  // TODO: should not be accessible from subclasses!
+  var worker: Worker[Data] = null
+
+  /*
+   * { ...
+   *   List()
+   * } then {
+   *   ...
+   * }
+   */
+  implicit def mkSubstep(block: => List[Message[Data]]) =
+    new Substep(() => block, null)
+
+  // directed graph for now
+  // TODO: should not be accessible from subclasses!
+  def connectTo(v: Vertex[Data]) {
+    neighbors = v :: neighbors
+  }
+  
+  def initialize() { }
+
+  def update(superstep: Int, incoming: List[Message[Data]]): Substep[Data]
+
+  override def toString = "Vertex(" + label + ")"
+}
+
+object Graph {
+  var count = 0
+  def nextId = {
+    count += 1
+    count
+  }
+}
+
+/*
+ * @param graph      the graph for which the worker manages a partition of vertices
+ * @param partition  the list of vertices that this worker manages
+ */
+class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[Data]) extends Actor {
+  var numSubsteps = 0
+  var step = 0
+
+  var id = Graph.nextId
+
+  var incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
+    override def default(v: Vertex[Data]) = List()
+  }
+
+  def superstep() {
+    // remove all application-level messages from mailbox
+    var done = false
+    while (!done) {
+      receiveWithin(0) {
+        case msg: Message[Data] if (msg.step == step) =>
+          incoming(msg.dest) = msg :: incoming(msg.dest)
+        case TIMEOUT =>
+          done = true
+      }
+    }
+
+    step += 1 // beginning of next superstep
+
+    var allOutgoing: List[Message[Data]] = List()
+    var crunch: Option[Crunch[Data]] = None
+
+    // iterate over all vertices that this worker manages
+    for (vertex <- partition) {
+      // compute outgoing messages using application-level `update` method
+      // and forward to parent
+      // paper: obtain chain of closures again for new params!!
+      val substeps = vertex.update(step - 1, incoming(vertex))
+      //println("#substeps = " + substeps.size)
+      val substep = substeps((step - 1) % substeps.size)
+
+      if (substep.isInstanceOf[CrunchStep[Data]]) {
+        val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
+        // assume every vertex has crunch step at this point
+        if (vertex == partition(0)) {
+          // compute aggregated value
+          val vertexValues = partition.map(v => v.value)
+          val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
+          crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
+        }
+      } else {
+        //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
+        val outgoing = substep.stepfun()
+        // set step field of outgoing messages to current step
+        for (out <- outgoing) out.step = step
+        allOutgoing = allOutgoing ::: outgoing
+      }
+
+      // only worker which manages the first vertex evaluates
+      // the termination condition
+      //if (vertex == parent.vertices(0) && parent.cond())
+      if (vertex == partition(0) && global.cond()) { // TODO: check!!
+        //println(this + ": sending Stop to " + parent)
+        parent ! "Stop"
+        exit()
+      }
+    }
+    incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
+      override def default(v: Vertex[Data]) = List()
+    }
+
+    if (crunch.isEmpty) {
+/*
+      parent ! "Done" // parent checks for "Stop" message first
+      react {
+        case "Outgoing" => // message from parent: deliver outgoing messages!
+*/
+          for (out <- allOutgoing) {
+            if (out.dest.worker == this) { // mention in paper
+              incoming(out.dest) = out :: incoming(out.dest)
+            } else
+              out.dest.worker ! out
+          }
+          parent ! "Done" // parent checks for "Stop" message first
+          //parent ! "DoneOutgoing"
+//      }
+    } else
+      parent ! crunch.get
+  }
+
+  def act() {
+/*    react {
+      case "Init" =>
+        for (v <- partition) { v.initialize() }
+*/
+        loop {
+          react {
+            case "Next" => // TODO: make it a class
+              //println(this + ": received Next")
+              superstep()
+
+            case CrunchResult(res: Data) =>
+              //println(this + ": received CrunchResult")
+              // deliver as incoming message to all vertices
+              for (vertex <- partition) {
+                val msg = Message[Data](null, vertex, res)
+                msg.step = step
+                this ! msg
+              }
+            // immediately start new superstep (explain in paper)
+            superstep()
+
+            case "Stop" =>
+              exit()
+          }
+        }
+    //}
+  } // def act()
+
+}
+
+// Message type to indicate to graph that it should start propagation
+case class StartPropagation(numIterations: Int)
+
+class Foreman(parent: Actor, var children: List[Actor]) extends Actor {
+
+  def waitForRepliesFrom(children: List[Actor], response: Option[AnyRef]) {
+    if (children.isEmpty) {
+      parent ! response.get
+    } else {
+      react {
+        case c: Crunch[d] => // have to wait for results of all children
+          val cruncher = c.cruncher
+          val crunchResult = c.crunchResult
+//          println(this + ": received " + c + " from " + sender)
+
+          if (response.isEmpty) {
+            waitForRepliesFrom(children.tail, Some(Crunch(cruncher, crunchResult)))
+          } else {
+            val previousCrunchResult = response.get.asInstanceOf[Crunch[d]].crunchResult
+            // aggregate previous result with new response
+            val newResponse = cruncher(crunchResult, previousCrunchResult)
+            waitForRepliesFrom(children.tail, Some(Crunch(cruncher, newResponse)))
+          }
+        case any: AnyRef =>
+          waitForRepliesFrom(children.tail, Some(any))
+      }
+    }
+  }
+
+  def act() {
+    loop {
+      react {
+        case "Stop" =>
+          if (sender != parent) {
+            //println(this + ": received Stop from child, forwarding to " + parent)
+            // do not wait for other children
+            // forward to parent and exit
+            parent ! "Stop"
+          }
+          exit()
+
+        case msg : AnyRef =>
+          if (sender == parent) {
+            //println(this + ": received " + msg + " from " + sender)
+            for (child <- children) {
+              child ! msg
+            }
+          } else { // received from child
+            val otherChildren = children.filterNot((child: Actor) => child == sender)
+            val response: Option[AnyRef] = msg match {
+              case Crunch(_, _) => Some(msg)
+              case otherwise => Some(msg)
+            }
+            // wait for a message from each child
+            waitForRepliesFrom(otherChildren, response)
+          }
+      }
+    }
+  }
+}
+
+// TODO: maintain mapping from vertex to the worker which manages the vertex,
+// do this using worker field of Vertex
+class Graph[Data] extends Actor {
+  var vertices: List[Vertex[Data]] = List()
+  var workers: List[Actor] = List()
+  var allForemen: List[Actor] = List()
+
+  var cond: () => Boolean = () => false
+
+  //Debug.level = 3
+
+  def addVertex(v: Vertex[Data]): Vertex[Data] = {
+    v.graph = this
+    vertices = v :: vertices
+    v
+  }
+
+  def createWorkers() {
+    val numChildren = 4
+    val numWorkers = 48
+
+    val topLevel = (for (i <- 1 to 3) yield {
+      val f = new Foreman(this, List())
+      workers = f :: workers
+      f
+    }).toList
+
+    val listOfMidLevels = for (foreman <- topLevel) yield {
+      val midLevel: List[Foreman] =
+        (for (i <- 1 to numChildren) yield new Foreman(foreman, List())).toList
+      foreman.children = midLevel
+      midLevel
+    }
+
+    val midLevel = listOfMidLevels.flatten
+    allForemen = topLevel ::: midLevel
+
+    // partition set of vertices into numWorkers partitions
+    val sizeOfMostPartitions = (vertices.size.toDouble / numWorkers.toDouble).floor.toInt
+    val tooManyPartitions = vertices.grouped(sizeOfMostPartitions).toList
+    var additionalPartitions = tooManyPartitions.drop(numWorkers)
+    val actualPartitions = tooManyPartitions.take(numWorkers)
+
+    val partitions = for (part <- actualPartitions) yield {
+      if (additionalPartitions.isEmpty)
+        part
+      else {
+        val additionalPart = additionalPartitions.head
+        additionalPartitions = additionalPartitions.tail
+        part ::: additionalPart
+      }
+    }
+
+/*
+    val partitionSize = {
+      val tmp = (vertices.size.toDouble / numWorkers.toDouble).ceil.toInt
+      if (tmp == 0) 1 else tmp
+    }
+    println("partition size: " + partitionSize)
+    val partitions = vertices.grouped(partitionSize).toList
+*/
+    //println("#partitions: " + partitions.size)
+
+    var partition: List[Vertex[Data]] = List()
+    for (i <- 0 until 12; j <- 0 until 4) {
+      partition = partitions(i * 4 + j)
+      val worker = new Worker(midLevel(i), partition, this)
+      midLevel(i).children = worker :: midLevel(i).children
+      allForemen ::= worker
+
+      for (vertex <- partition) {
+        vertex.worker = worker
+      }
+      worker.start()
+    }
+
+    for (f <- midLevel) { f.start() }
+    for (f <- topLevel) { f.start() }
+  }
+
+  def act() {
+    loop {
+      receive {
+        case "Stop" =>
+          exit()
+
+        case StartPropagation(numIterations) =>
+          val parent = sender
+
+          createWorkers()
+          //for (w <- workers) { w ! "Init" }
+
+          var crunchResult: Option[Data] = None
+
+          var shouldFinish = false
+          var i = 1
+          while ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
+            i += 1
+            // 0 superstep: i == 2
+            // 1 superstep: i == 3
+            // 2 superstep: i == 4
+            // 3 superstep: i == 5
+
+            // time if (i - 2) % 3 == 0
+            
+            if (!crunchResult.isEmpty)
+              for (w <- workers) { // go to next superstep
+                w ! CrunchResult(crunchResult.get)
+              }
+            else
+              for (w <- workers) { // go to next superstep
+                w ! "Next"
+              }
+
+            var numDone = 0
+            var numTotal: Int = workers.size
+            if (numTotal < 100) numTotal = 100
+
+            var cruncher: Option[(Data, Data) => Data] = None
+            var workerResults: List[Data] = List()
+
+            for (w <- workers) {
+              receive {
+                case "Stop" => // stop iterating
+                  //println("should stop now (received from " + sender + ")")
+                  shouldFinish = true
+
+                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
+                  if (cruncher.isEmpty)
+                    cruncher = Some(fun)
+                  workerResults ::= workerResult
+
+                case "Done" =>
+                  numDone += 1
+                  //if ((numDone % (numTotal / 20)) == 0)
+                  //  print("#")
+              }
+            }
+            //println(".")
+
+            if (!shouldFinish) {
+              // are we inside a crunch step?
+              if (!cruncher.isEmpty) {
+                crunchResult = Some(workerResults.reduceLeft(cruncher.get))
+              } else {
+                crunchResult = None
+
+                //println(this + ": sending Outgoing to " + workers)
+/*
+                for (w <- workers) {
+                  w ! "Outgoing"
+                }
+                for (w <- workers) {
+                  receive {
+                    case "DoneOutgoing" =>
+                      //println(this + ": received DoneOutgoing")
+                  }
+                }
+*/                
+              }
+            }
+          }
+
+          for (foreman <- allForemen) {
+            foreman ! "Stop"
+          }
+          parent ! "Done"
+      }
+    }
+  }
+
+  def iterate(numIterations: Int) {
+    this !? StartPropagation(numIterations)
+  }
+
+  def iterateUntil(condition: => Boolean) {
+    cond = () => condition
+    this !? StartPropagation(0)
+  }
+
+  def terminate() {
+    this ! "Stop"
+  }
+}
+
+object Test1 {
+  var count = 0
+  def nextcount: Int = {
+    count += 1
+    count
+  }
+}
+
+class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+    {
+      value += 1
+      List()
+    }
+  }
+}
+
+      //, (res: Double, vertices: (Vertex, Vertex)) => {
+      // (T, (Vertex, Vertex)) => List[Message[Data]]
+
+      // (Vertex, Vertex) => (T, (Vertex, Vertex))
+      //(v1.value + v2.value, (v1, v2))
+
+class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+    {
+      value += 1
+      List()
+    } crunch((v1: Double, v2: Double) => v1 + v2) then {
+      // result of crunch should be here as incoming message
+      incoming match {
+        case List(crunchResult) =>
+          value = crunchResult.value
+        case List() =>
+          // do nothing
+      }
+      List()
+    }
+  }
+}
+
+object Test {
+
+  def runTest1() {
+    println("running test1...")
+    val g = new Graph[Double]
+    for (i <- 1 to 48) {
+      g.addVertex(new Test1Vertex)
+    }
+    g.start()
+    g.iterate(1)
+    g.synchronized {
+      for (v <- g.vertices) {
+        if (v.value < 1) throw new Exception
+      }
+    }
+    g.terminate()
+    println("test1 OK")
+  }
+
+  def runTest2() {
+    println("running test2...")
+    val g = new Graph[Double]
+    for (i <- 1 to 48) {
+      g.addVertex(new Test2Vertex)
+    }
+    g.start()
+    g.iterate(3)
+    g.synchronized {
+      for (v <- g.vertices) {
+        if (v.value < 10) throw new Exception
+      }
+    }
+    g.terminate()
+    println("test2 OK")
+  }
+
+  def main(args: Array[String]) {
+    runTest1()
+    runTest2()
+  }
+
+}
