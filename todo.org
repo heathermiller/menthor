@@ -1,0 +1,17 @@
+
+* Clean up source: directories for packages, merge different version of ProcessingParallel
+* Make ProcessingParallelComposable work for PageRank
+
+*WASTE-OF-LIFE'S TASKS:
+* NIPS outline
+* Survey the best/most-interesting ML algs at NIPS for parallelization.
+* Figure out what in Vetterli's lab we can apply ADMM to. 
+* Make git repository, build script? 
+* Datasets
+
+Possibilities: 
+* Dist optimization - nice for NIPS is that it's a real problem with real data and a real application
+* Restricted Boltzmann machines (deep learning?) - composability point
+
+
+
