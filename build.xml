@@ -22,6 +22,7 @@
     </fail>
  
     <!-- variables for paths and files -->
+    <property name="project" value="menthor"/>
     <property name="src.dir" location="${basedir}/src"/>
     <property name="lib.dir" location="${basedir}/lib"/>
     <property name="build.dir" location="${basedir}/build"/>
@@ -33,6 +34,11 @@
     <property name="scala-library.jar" location="${scala.dir}/lib/scala-library.jar"/>
     <property name="scala-compiler.jar" location="${scala.dir}/lib/scala-compiler.jar"/>
  
+    <tstamp/>
+    <property name="now" value="${DSTAMP}" />
+    <property name="tarball.tar" value="${project}-${now}.tar" />  
+    <property name="tarball.tar.gz" value="${tarball.tar}.gz" />
+
     <path id="project.classpath">
       <pathelement location="${scala-library.jar}"/>
       <pathelement location="${build-classes.dir}"/> <!-- used during recompilation -->
@@ -67,4 +73,14 @@
       <src><pathelement location="${src.dir}"/></src>
     </scalac>
   </target>
+
+  <target name="dist" depends="compile">
+    <tar tarfile="${build.dir}/${tarball.tar}"
+         basedir=".."
+         includes="${project}/**"
+         excludes="${project}/build/**,${project}/todo.org,${project}/lasso.org,${project}/.git/**" />
+    <gzip zipfile="${build.dir}/${tarball.tar.gz}" src="${build.dir}/${tarball.tar}" />
+    <delete file="${build.dir}/${tarball.tar}"/>
+  </target>
+
 </project>
