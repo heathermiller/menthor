@@ -32,3 +32,7 @@ Actor-Lab has rank 1.3479787359654108E-4
 ABX has rank 1.3406944845278912E-4
 no_title[644327] has rank 1.1435584816855264E-4
 
+* Running the hierarchical clustering example
+
+Command-line arguments: par/seq debug? datafile inputsize
+$ scala -cp build/classes processing.parallel.Clustering par false data/blogdata.txt 100

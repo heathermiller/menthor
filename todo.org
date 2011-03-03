@@ -1,7 +1,8 @@
 
 * Clean up source: directories for packages, merge different version of ProcessingParallel
 
-* TODO Create an archive containing source and build file
+* DONE Create an archive containing source and build file
+  CLOSED: [2011-03-03 Thu 13:42]
 
 * TODO Create web page with tutorial
 ** How to download source
