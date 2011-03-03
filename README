@@ -9,7 +9,7 @@ $ scalac -cp classes -d classes src/main/scala/PageRankParallel.scala src/main/s
 * Running the PageRank example
 
 Command-line arguments: #iterations datadir #pages
-$ time scala -cp classes processing.parallel.PageRank 10 ~/Downloads/ 2000
+$ scala -cp classes processing.parallel.PageRank 10 data/ 2000
 
 Expected output:
 

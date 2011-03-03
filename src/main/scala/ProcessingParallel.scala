@@ -82,7 +82,7 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
 
   // graph has to initialize `worker` upon partitioning the list of vertices
   // TODO: should not be accessible from subclasses!
-  var worker: Worker[Data] = null
+  var worker: Actor = null
 
   /*
    * { ...
