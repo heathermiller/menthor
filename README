@@ -1,6 +1,11 @@
 * Building the framework
 
-$ scalac -d classes src/main/scala/ProcessingParallel.scala src/main/scala/Worker.scala
+Using ant build file. From root,
+$ ant compile
+ (SCALA_HOME must be set to Scala home directory, i.e. /opt/local/share/scala
+
+OLD WAY:
+    $ scalac -d classes src/main/scala/ProcessingParallel.scala src/main/scala/Worker.scala 
 
 * Building the PageRank example
 
