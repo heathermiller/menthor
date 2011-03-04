@@ -12,7 +12,7 @@ import akka.actor.Actor.actorOf
  * @param graph      the graph for which the worker manages a partition of vertices
  * @param partition  the list of vertices that this worker manages
  */
-class Worker[Data](parent: scala.actors.Actor, partition: List[Vertex[Data]], global: Graph[Data]) extends Actor {
+class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Graph[Data]) extends Actor {
   var numSubsteps = 0
   var step = 0
 
@@ -97,7 +97,7 @@ class Worker[Data](parent: scala.actors.Actor, partition: List[Vertex[Data]], gl
       queue += msg
 
     case "Next" => // TODO: make it a class
-      //println(this + ": received Next")
+      println(this + ": received Next")
       superstep()
 
     case CrunchResult(res: Data) =>

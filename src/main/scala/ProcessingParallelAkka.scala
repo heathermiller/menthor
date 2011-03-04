@@ -10,6 +10,8 @@ import akka.actor
 import actor.ActorRef
 import actor.Actor.actorOf
 
+import java.util.concurrent.CountDownLatch
+
 // step: the step in which the message was produced
 // TODO: for distribution need to change Vertex[Data] into vertex ID
 case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
@@ -120,11 +122,11 @@ object Graph {
 }
 
 // Message type to indicate to graph that it should start propagation
-case class StartPropagation(numIterations: Int)
+case class StartPropagation(numIterations: Int, latch: CountDownLatch)
 
 // TODO: maintain mapping from vertex to the worker which manages the vertex,
 // do this using worker field of Vertex
-class Graph[Data] extends Actor {
+class Graph[Data] extends actor.Actor {
   var vertices: List[Vertex[Data]] = List()
   var workers: List[ActorRef] = List()
   var allForemen: List[ActorRef] = List()
@@ -146,7 +148,7 @@ class Graph[Data] extends Actor {
       val partitionSize: Int = graphSize / numProcs
       val partitions = vertices.grouped(partitionSize)
       for (partition <- partitions) {
-        val worker = actorOf(new Worker(Actor.self, partition, this))
+        val worker = actorOf(new Worker(self, partition, this))
         workers ::= worker
         for (v <- partition)
           v.worker = worker
@@ -155,7 +157,7 @@ class Graph[Data] extends Actor {
     } else {
       // create one worker per vertex
       for (v <- vertices) {
-        val worker = actorOf(new Worker(Actor.self, List(v), this))
+        val worker = actorOf(new Worker(self, List(v), this))
         workers ::= worker
         v.worker = worker
         worker.start()
@@ -229,91 +231,119 @@ class Graph[Data] extends Actor {
   }
 */
 
-  def act() {
-    loop {
-      receive {
-        case "Stop" =>
-          exit()
+  var crunchResult: Option[Data] = None
+  var shouldFinish = false
+  var i = 1
+  var numIterations = 0
 
-        case StartPropagation(numIterations) =>
-          val parent = sender
+  var numDone = 0
+  var numTotal: Int = workers.size
 
-          createWorkers(vertices.size)
+  var cruncher: Option[(Data, Data) => Data] = None
+  var workerResults: List[Data] = List()
 
-          var crunchResult: Option[Data] = None
+  def nextIter() {
+    numRecv = 0
+    if ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
+      i += 1
+      // 0 superstep: i == 2
+      // 1 superstep: i == 3
 
-          var shouldFinish = false
-          var i = 1
-          while ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
-            i += 1
-            // 0 superstep: i == 2
-            // 1 superstep: i == 3
+      if (!crunchResult.isEmpty) {
+        println(this+": sending "+crunchResult.get+" to workers")
+        for (w <- workers) { // go to next superstep
+          w ! CrunchResult(crunchResult.get)
+        }
+      } else {
+        println(this+": sending Next to workers")
+        for (w <- workers) { // go to next superstep
+          w ! "Next"
+        }
+      }
 
-            if (!crunchResult.isEmpty) {
-              println(this+": sending "+crunchResult.get+" to workers")
-              for (w <- workers) { // go to next superstep
-                w ! CrunchResult(crunchResult.get)
-              }
-            } else
-              for (w <- workers) { // go to next superstep
-                w ! "Next"
-              }
+      numDone = 0
+      numTotal = workers.size
+      if (numTotal < 100) numTotal = 100
 
-            var numDone = 0
-            var numTotal: Int = workers.size
-            if (numTotal < 100) numTotal = 100
+      cruncher = None
+      workerResults = List()
+    } else {
+      for (foreman <- allForemen) {
+        foreman ! "Stop"
+      }
+      parent.countDown()
+    }
+  }
 
-            var cruncher: Option[(Data, Data) => Data] = None
-            var workerResults: List[Data] = List()
+  var numRecv = 0
+  var parent: CountDownLatch = null
 
-            for (w <- workers) {
-              receive {
-                case "Stop" => // stop iterating
-                  //println("should stop now (received from " + sender + ")")
-                  shouldFinish = true
+  def receive = {
+    case "Stop" =>
+      //exit()
+      println(self + ": we'd like to stop now")
 
-                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
-                  println(this+": received Crunch")
-                  if (cruncher.isEmpty)
-                    cruncher = Some(fun)
-                  workerResults ::= workerResult
+    case StartPropagation(numIters, from) =>
+      println(this+": received StartPropagation")
+      parent = from
+      numIterations = numIters
+      createWorkers(vertices.size)
 
-                case "Done" =>
-                  numDone += 1
-                  //if ((numDone % (numTotal / 20)) == 0)
-                  //  print("#")
-              }
-            }
-            //println(".")
+      become {
+        case "Stop" => // stop iterating
+          //println("should stop now (received from " + sender + ")")
+          shouldFinish = true
+          nextIter()
 
+        case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
+          numRecv += 1
+          println(this+": received Crunch")
+          if (cruncher.isEmpty)
+            cruncher = Some(fun)
+          workerResults ::= workerResult
+          if (numRecv == workers.size) {
+            crunchResult = Some(workerResults.reduceLeft(cruncher.get))
+            nextIter()
+          }
+          
+        case "Done" =>
+          println(this+": received Done")
+          numRecv += 1
+          numDone += 1
+          //if ((numDone % (numTotal / 20)) == 0)
+          //  print("#")
+
+          if (numRecv == workers.size) {
             // are we inside a crunch step?
             if (!cruncher.isEmpty) {
               crunchResult = Some(workerResults.reduceLeft(cruncher.get))
             } else {
               crunchResult = None
             }
-
-          } // while
-
-          for (foreman <- allForemen) {
-            foreman ! "Stop"
+            nextIter()
           }
-          parent ! "Done"
       }
-    }
+      //println(".")
+
+      println(this+": starting first iteration")
+      nextIter()
   }
 
   def iterate(numIterations: Int) {
-    this !? StartPropagation(numIterations)
+    val l = new CountDownLatch(1)
+    self ! StartPropagation(numIterations, l)
+    l.await()
   }
 
   def iterateUntil(condition: => Boolean) {
     cond = () => condition
-    this !? StartPropagation(0)
+    val l = new CountDownLatch(1)
+    self ! StartPropagation(0, l)
+    l.await()
   }
 
   def terminate() {
-    this ! "Stop"
+    self ! "Stop"
   }
 }
 
@@ -364,11 +394,12 @@ object Test {
 
   def runTest1() {
     println("running test1...")
-    val g = new Graph[Double]
+    var g: Graph[Double] = null
+    val ga = actorOf({ g = new Graph[Double]; g })
     for (i <- 1 to 48) {
       g.addVertex(new Test1Vertex)
     }
-    g.start()
+    ga.start()
     g.iterate(1)
     g.synchronized {
       for (v <- g.vertices) {
@@ -381,11 +412,12 @@ object Test {
 
   def runTest2() {
     println("running test2...")
-    val g = new Graph[Double]
+    var g: Graph[Double] = null
+    val ga = actorOf({ g = new Graph[Double]; g })
     for (i <- 1 to 10) {
       g.addVertex(new Test2Vertex)
     }
-    g.start()
+    ga.start()
     g.iterate(3)
     g.synchronized {
       for (v <- g.vertices) {

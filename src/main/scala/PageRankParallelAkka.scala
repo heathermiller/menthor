@@ -2,6 +2,10 @@ package menthor.akka
 
 import scala.collection.mutable.{Map, HashMap}
 
+import akka.actor
+import actor.ActorRef
+import actor.Actor.actorOf
+
 class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
   def numVertices = graph.vertices.size
@@ -30,11 +34,29 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
 object PageRank {
 
+  class MyActor1(wikigraph: Graph[Double], numIterations: Int, names: Map[String, String]) extends actor.Actor {
+    def receive = {
+      case "Start" =>
+        wikigraph.iterate(numIterations)
+
+        wikigraph.synchronized {
+          val sorted = wikigraph.vertices.sortWith((v1: Vertex[Double], v2: Vertex[Double]) => v1.value > v2.value)
+          for (page <- sorted.take(10)) {
+            println(names(page.label) + " has rank " + page.value)
+          }
+        }
+
+        wikigraph.terminate()
+        self.reply(0)
+    }
+  }
+
+/*
   def runPageRank(iterations: Int) {
     println("running PageRank...")
     println("Creating new graph...")
     val g = new Graph[Double]
-
+    
     // a little web graph: BBC -> MS, EPFL -> BBC, PHILIPP -> BBC, PHILIPP -> EPFL
     val d1 = g.addVertex(new PageRankVertex("BBC"))
     val d2 = g.addVertex(new PageRankVertex("MS"))
@@ -70,7 +92,7 @@ object PageRank {
 
     g.terminate()
   }
-
+*/
   import java.io.{FileWriter, PrintWriter}
 
   def runWikipediaRank(numIterations: Int, dataDir: String, numPages: Int, small: Boolean) {
@@ -99,17 +121,10 @@ object PageRank {
     for ((title, i) <- titles.take(400000) zipWithIndex)
       names.put("" + i, title)
 
-    wikigraph.start()
-    wikigraph.iterate(numIterations)
-
-    wikigraph.synchronized {
-      val sorted = wikigraph.vertices.sortWith((v1: Vertex[Double], v2: Vertex[Double]) => v1.value > v2.value)
-      for (page <- sorted.take(10)) {
-        println(names(page.label) + " has rank " + page.value)
-      }
-    }
-
-    wikigraph.terminate()
+    val ga = actorOf(wikigraph)
+    ga.start()
+    val client = actorOf(new MyActor1(wikigraph, numIterations, names)).start
+    client !! "Start"
   }
 
   def main(args: Array[String]) {
