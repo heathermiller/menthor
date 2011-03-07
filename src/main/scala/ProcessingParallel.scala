@@ -23,7 +23,8 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   var superstep: Int = 0
   var incoming: List[Message[Data]] = List()
 
-  var nextStep: Substep[Data] = null
+  var nextStep: Substep[Data] =
+    update().firstSubstep
 
   /*
    * { ...

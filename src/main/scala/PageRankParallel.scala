@@ -6,7 +6,7 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
   def numVertices = graph.vertices.size
 
-  def update(): Substep[Double] = {
+  def update(): Substep[Double] = mkSubstep({
 
     if (superstep >= 1) {
       var sum = 0.0d
@@ -25,7 +25,7 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
       List()
     }
 
-  }
+  })
 }
 
 object PageRank {

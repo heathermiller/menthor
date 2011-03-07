@@ -33,7 +33,7 @@ class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Subste
     count
   }
 
-  private def firstSubstep = {
+  def firstSubstep = {
     // follow refs back to the first substep
     var currStep = this
     while (currStep.previous != null)

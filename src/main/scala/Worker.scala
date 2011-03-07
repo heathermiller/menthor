@@ -43,9 +43,12 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
       // paper: obtain chain of closures again for new params!!
       vertex.superstep = step - 1
       vertex.incoming = incoming(vertex)
-      val substeps = vertex.update()
+
+      val substeps = vertex.nextStep
+
       //println("#substeps = " + substeps.size)
-      val substep = substeps((step - 1) % substeps.size)
+      //val substep = substeps((step - 1) % substeps.size)
+      val substep = substeps
 
       if (substep.isInstanceOf[CrunchStep[Data]]) {
         val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
@@ -63,6 +66,12 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
         for (out <- outgoing) out.step = step
         allOutgoing = allOutgoing ::: outgoing
       }
+
+      // move to next substep
+      vertex.nextStep = if (substep.next == null)
+        substep.firstSubstep
+      else
+        substep.next
 
       // only worker which manages the first vertex evaluates
       // the termination condition
