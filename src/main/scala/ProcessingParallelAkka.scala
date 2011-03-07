@@ -3,9 +3,6 @@ package menthor.akka
 import scala.collection.mutable.{Map, HashMap}
 import scala.collection.mutable.ListBuffer
 
-import scala.actors.{Actor, TIMEOUT, OutputChannel, Debug}
-import Actor.loop
-
 import akka.actor
 import actor.ActorRef
 import actor.Actor.actorOf
@@ -15,7 +12,9 @@ import java.util.concurrent.CountDownLatch
 // step: the step in which the message was produced
 // TODO: for distribution need to change Vertex[Data] into vertex ID
 case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
-  // TODO: step does not need to be visible in user code!
+  /* Superstep in which message was created.
+   * TODO: step does not need to be visible in user code!
+   */
   var step: Int = 0
 }
 
@@ -250,12 +249,10 @@ class Graph[Data] extends actor.Actor {
       // 1 superstep: i == 3
 
       if (!crunchResult.isEmpty) {
-        println(this+": sending "+crunchResult.get+" to workers")
         for (w <- workers) { // go to next superstep
           w ! CrunchResult(crunchResult.get)
         }
       } else {
-        println(this+": sending Next to workers")
         for (w <- workers) { // go to next superstep
           w ! "Next"
         }
@@ -268,9 +265,11 @@ class Graph[Data] extends actor.Actor {
       cruncher = None
       workerResults = List()
     } else {
+/*
       for (foreman <- allForemen) {
         foreman ! "Stop"
       }
+*/
       parent.countDown()
     }
   }
@@ -282,9 +281,9 @@ class Graph[Data] extends actor.Actor {
     case "Stop" =>
       //exit()
       println(self + ": we'd like to stop now")
+      self.stop()
 
     case StartPropagation(numIters, from) =>
-      println(this+": received StartPropagation")
       parent = from
       numIterations = numIters
       createWorkers(vertices.size)
@@ -297,7 +296,6 @@ class Graph[Data] extends actor.Actor {
 
         case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
           numRecv += 1
-          println(this+": received Crunch")
           if (cruncher.isEmpty)
             cruncher = Some(fun)
           workerResults ::= workerResult
@@ -307,7 +305,6 @@ class Graph[Data] extends actor.Actor {
           }
           
         case "Done" =>
-          println(this+": received Done")
           numRecv += 1
           numDone += 1
           //if ((numDone % (numTotal / 20)) == 0)
@@ -325,7 +322,6 @@ class Graph[Data] extends actor.Actor {
       }
       //println(".")
 
-      println(this+": starting first iteration")
       nextIter()
   }
 
@@ -374,16 +370,14 @@ class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
   def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
     {
       value += 1
-      println(this+": value is now "+value)
       List()
     } crunch((v1: Double, v2: Double) => v1 + v2) then {
       // result of crunch should be here as incoming message
       incoming match {
         case List(crunchResult) =>
-          println(this+": received crunch result")
           value = crunchResult.value
         case List() =>
-          println(this+": did not receive crunch result")
+          // do nothing
       }
       List()
     }

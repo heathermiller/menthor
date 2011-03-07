@@ -7,6 +7,10 @@ import scala.util.parsing.combinator._
 import scala.util.parsing.input.{ Reader }
 import scala.util.parsing.input.CharArrayReader.EofCh
 
+import akka.actor
+import actor.ActorRef
+import actor.Actor.actorOf
+
 object GraphReader extends RegexParsers {
   override def skipWhitespace = false
 
@@ -26,8 +30,9 @@ object GraphReader extends RegexParsers {
       case NoSuccess(msg, rest) => onError(msg); List()
     }
 
-  def readGraph(lines: Iterator[String]): Graph[Double] = {
-    val graph = new Graph[Double]
+  def readGraph(lines: Iterator[String]): (Graph[Double], ActorRef) = {
+    var graph: Graph[Double] = null
+    val ga = actorOf({ graph = new Graph[Double]; graph })
 
     for (line <- lines) {
       val labels = tokenize(line)
@@ -52,7 +57,7 @@ object GraphReader extends RegexParsers {
         firstVertex.connectTo(targetVertex)
       }
     }
-    graph
+    (graph, ga)
   }
 
   def printGraph(g: Graph[Double]) {

@@ -2,9 +2,6 @@ package menthor.akka
 
 import scala.collection.mutable.{HashMap, Queue}
 
-//import scala.actors.{Actor, TIMEOUT}
-//import Actor._
-
 import akka.actor.{Actor, ActorRef}
 import akka.actor.Actor.actorOf
 
@@ -72,6 +69,7 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
         parent ! "Stop"
         //exit()
         println(self + ": we'd like to stop now")
+        self.stop()
       }
     }
     incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
@@ -87,7 +85,6 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
       }
       parent ! "Done" // parent checks for "Stop" message first
     } else {
-      println(this+": sending "+crunch.get+" to "+parent)
       parent ! crunch.get
     }
   }
@@ -97,11 +94,9 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
       queue += msg
 
     case "Next" => // TODO: make it a class
-      println(this + ": received Next")
       superstep()
 
     case CrunchResult(res: Data) =>
-      println(this + ": received CrunchResult")
       // deliver as incoming message to all vertices
       for (vertex <- partition) {
         val msg = Message[Data](null, vertex, res)
@@ -114,6 +109,7 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
     case "Stop" =>
       //exit()
       println(self + ": we'd like to stop now")
+      self.stop()
   }
 
 }

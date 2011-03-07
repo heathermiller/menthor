@@ -34,28 +34,11 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
 object PageRank {
 
-  class MyActor1(wikigraph: Graph[Double], numIterations: Int, names: Map[String, String]) extends actor.Actor {
-    def receive = {
-      case "Start" =>
-        wikigraph.iterate(numIterations)
-
-        wikigraph.synchronized {
-          val sorted = wikigraph.vertices.sortWith((v1: Vertex[Double], v2: Vertex[Double]) => v1.value > v2.value)
-          for (page <- sorted.take(10)) {
-            println(names(page.label) + " has rank " + page.value)
-          }
-        }
-
-        wikigraph.terminate()
-        self.reply(0)
-    }
-  }
-
-/*
   def runPageRank(iterations: Int) {
     println("running PageRank...")
     println("Creating new graph...")
-    val g = new Graph[Double]
+    var g: Graph[Double] = null
+    val ga = actorOf({ g = new Graph[Double]; g })
     
     // a little web graph: BBC -> MS, EPFL -> BBC, PHILIPP -> BBC, PHILIPP -> EPFL
     val d1 = g.addVertex(new PageRankVertex("BBC"))
@@ -80,7 +63,7 @@ object PageRank {
       }
     }
 
-    g.start()
+    ga.start()
     g.iterate(iterations)
 
     println("values after propagation:")
@@ -92,7 +75,7 @@ object PageRank {
 
     g.terminate()
   }
-*/
+
   import java.io.{FileWriter, PrintWriter}
 
   def runWikipediaRank(numIterations: Int, dataDir: String, numPages: Int, small: Boolean) {
@@ -106,7 +89,7 @@ object PageRank {
       // drop first 150'000 entries
       linesOrig.drop(150000).take(numPages)
     }
-    val wikigraph = GraphReader.readGraph(lines)
+    val (wikigraph, ga) = GraphReader.readGraph(lines)
     //GraphReader.printGraph(wikigraph)
     println("#vertices: " + wikigraph.vertices.size)
 
@@ -121,10 +104,17 @@ object PageRank {
     for ((title, i) <- titles.take(400000) zipWithIndex)
       names.put("" + i, title)
 
-    val ga = actorOf(wikigraph)
     ga.start()
-    val client = actorOf(new MyActor1(wikigraph, numIterations, names)).start
-    client !! "Start"
+    wikigraph.iterate(numIterations)
+
+    wikigraph.synchronized {
+      val sorted = wikigraph.vertices.sortWith((v1: Vertex[Double], v2: Vertex[Double]) => v1.value > v2.value)
+      for (page <- sorted.take(10)) {
+        println(names(page.label) + " has rank " + page.value)
+      }
+    }
+
+    wikigraph.terminate()
   }
 
   def main(args: Array[String]) {
