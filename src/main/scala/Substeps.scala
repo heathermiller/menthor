@@ -3,6 +3,7 @@ package processing.parallel
 // each Substep has a substep function and a reference to the previous Substep
 class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Substep[Data]) {
   var next: Substep[Data] = null
+  var cond: Option[() => Boolean] = None
 
   // TODO: implement thenUntil(cond)
   def then(block: => List[Message[Data]]): Substep[Data] = {
@@ -13,6 +14,12 @@ class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Subste
   // TODO: merge crunch steps
   def crunch(fun: (Data, Data) => Data): Substep[Data] = {
     next = new CrunchStep(fun, this)
+    next
+  }
+
+  def thenUntil(cond: => Boolean, block: => List[Message[Data]]): Substep[Data] = {
+    next = new Substep(() => block, this)
+    next.cond = Some(() => cond)
     next
   }
 

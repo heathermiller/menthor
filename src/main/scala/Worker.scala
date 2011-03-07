@@ -41,7 +41,9 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
       // compute outgoing messages using application-level `update` method
       // and forward to parent
       // paper: obtain chain of closures again for new params!!
-      val substeps = vertex.update(step - 1, incoming(vertex))
+      vertex.superstep = step - 1
+      vertex.incoming = incoming(vertex)
+      val substeps = vertex.update()
       //println("#substeps = " + substeps.size)
       val substep = substeps((step - 1) % substeps.size)
 

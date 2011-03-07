@@ -20,6 +20,11 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   // TODO: should not be accessible from subclasses!
   var worker: Actor = null
 
+  var superstep: Int = 0
+  var incoming: List[Message[Data]] = List()
+
+  var nextStep: Substep[Data] = null
+
   /*
    * { ...
    *   List()
@@ -38,7 +43,7 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   
   def initialize() { }
 
-  def update(superstep: Int, incoming: List[Message[Data]]): Substep[Data]
+  def update(): Substep[Data]
 
   override def toString = "Vertex(" + label + ")"
 }
@@ -248,7 +253,7 @@ object Test1 {
 }
 
 class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+  def update(): Substep[Double] = {
     {
       value += 1
       List()
@@ -263,7 +268,7 @@ class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
       //(v1.value + v2.value, (v1, v2))
 
 class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+  def update(): Substep[Double] = {
     {
       value += 1
       List()

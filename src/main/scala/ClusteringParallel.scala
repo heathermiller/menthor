@@ -267,7 +267,7 @@ class ClusteringVertex(var clusters: List[Cluster], cluster: Cluster, label: Str
     value = newcluster
   }
 
-  def update(superstep: Int, incoming: List[Message[Cluster]]): Substep[Cluster] = {
+  def update(): Substep[Cluster] = {
     {
       if (superstep == 0) {
         for (other <- clusters; if other != value) {

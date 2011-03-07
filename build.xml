@@ -70,6 +70,10 @@
       destdir="${build-classes.dir}"
       classpathref="project.classpath">
       <include name="**/*.scala"/>
+      <exclude name="**/AkkaWorker.scala"/>
+      <exclude name="**/ProcessingParallelAkka.scala"/>
+      <exclude name="**/GraphReaderAkka.scala"/>
+      <exclude name="**/PageRankParallelAkka.scala"/>
       <src><pathelement location="${src.dir}"/></src>
     </scalac>
   </target>
