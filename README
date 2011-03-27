@@ -1,0 +1,38 @@
+* Building the framework
+
+Using ant build file. From root,
+$ ant compile
+ (SCALA_HOME must be set to Scala home directory, i.e. /opt/local/share/scala
+
+OLD WAY:
+    $ scalac -d classes src/main/scala/ProcessingParallel.scala src/main/scala/Worker.scala 
+
+* Building the PageRank example
+
+$ scalac -cp classes -d classes src/main/scala/PageRankParallel.scala src/main/scala/GraphReader.scala
+
+* Running the PageRank example
+
+Command-line arguments: #iterations datadir #pages
+$ scala -cp classes processing.parallel.PageRank 10 data/ 2000
+
+Expected output:
+
+Reading wikipedia graph from file...
+#vertices: 14672
+Building page title map...
+A_rod has rank 9.532808210606779E-4
+A_roads_in_Zone_9_of_the_Great_Britain_numbering_scheme has rank 8.5826602297288E-4
+A_roads_in_Zone_8_of_the_Great_Britain_numbering_scheme has rank 7.289154217330095E-4
+no_title[1480822] has rank 2.3315882292802617E-4
+ABQ-2 has rank 2.2965968836554816E-4
+no_title[505945] has rank 1.9559552732092205E-4
+American_Broadcasting_Company_(ABC) has rank 1.7042608200493645E-4
+Actor-Lab has rank 1.3479787359654108E-4
+ABX has rank 1.3406944845278912E-4
+no_title[644327] has rank 1.1435584816855264E-4
+
+* Running the hierarchical clustering example
+
+Command-line arguments: par/seq debug? datafile inputsize
+$ scala -cp build/classes processing.parallel.Clustering par false data/blogdata.txt 100
