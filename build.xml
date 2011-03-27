@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+ 
+<project name="menthor" default="build" basedir=".">
+  <description>Project Build Script</description>
+ 
+  <!-- targets -->
+  <target name="build" depends="compile" description="Build whole project"/>
+ 
+  <target name="clean" depends="init" description="Remove previous build files">
+    <delete dir="${build.dir}" includeemptydirs="true" quiet="true"/>
+  </target>
+ 
+  <target name="init">
+    <property environment="env"/>
+ 
+    <!-- check for required tools -->
+    <fail message="Missing SCALA_HOME variable in OS environment">
+      <condition><isset property="${env.SCALA_HOME}"/></condition>
+    </fail>
+    <fail message="Missing JAVA_HOME variable in OS environment">
+      <condition><isset property="${env.JAVA_HOME}"/></condition>
+    </fail>
+ 
+    <!-- variables for paths and files -->
+    <property name="project" value="menthor"/>
+    <property name="src.dir" location="${basedir}/src"/>
+    <property name="lib.dir" location="${basedir}/lib"/>
+    <property name="build.dir" location="${basedir}/build"/>
+    <property name="build-classes.dir" location="${build.dir}/classes"/>
+    <property name="build-lib.dir" location="${build.dir}/lib"/>
+    <property name="build-doc.dir" location="${build.dir}/doc"/>
+    <property name="java.dir" location="${env.JAVA_HOME}"/>
+    <property name="scala.dir" location="${env.SCALA_HOME}"/>
+    <property name="scala-library.jar" location="${scala.dir}/lib/scala-library.jar"/>
+    <property name="scala-compiler.jar" location="${scala.dir}/lib/scala-compiler.jar"/>
+ 
+    <tstamp/>
+    <property name="now" value="${DSTAMP}" />
+    <property name="tarball.tar" value="${project}-${now}.tar" />  
+    <property name="tarball.tar.gz" value="${tarball.tar}.gz" />
+
+    <path id="project.classpath">
+      <pathelement location="${scala-library.jar}"/>
+      <pathelement location="${build-classes.dir}"/> <!-- used during recompilation -->
+    </path>
+ 
+    <path id="scala.classpath">
+      <pathelement location="${scala-compiler.jar}"/>
+      <pathelement location="${scala-library.jar}"/>
+    </path>	
+ 
+    <!-- load scala's ant tasks -->
+    <taskdef resource="scala/tools/ant/antlib.xml" classpathref="scala.classpath"/>
+ 
+    <!-- print where this project will get scala and java from -->
+    <echo message="Init project"/>
+    <echo message=" with scala.dir = ${scala.dir}"/>
+    <echo message=" with java.dir = ${java.dir}"/>
+ 
+    <!-- check if any files has been modified since last build -->
+    <uptodate property="build.uptodate" targetfile="${build.dir}/build.done">
+      <srcfiles dir= "${src.dir}" includes="**"/>
+      <srcfiles dir= "${lib.dir}" includes="**"/>
+    </uptodate>
+  </target>
+ 
+  <target name="compile" depends="init" unless="build.uptodate">
+    <mkdir dir="${build-classes.dir}"/>
+    <scalac
+      destdir="${build-classes.dir}"
+      classpathref="project.classpath">
+      <include name="**/*.scala"/>
+      <src><pathelement location="${src.dir}"/></src>
+    </scalac>
+  </target>
+
+  <target name="dist" depends="compile">
+    <tar tarfile="${build.dir}/${tarball.tar}"
+         basedir=".."
+         includes="${project}/**"
+         excludes="${project}/build/**,${project}/todo.org,${project}/lasso.org,${project}/.git/**" />
+    <gzip zipfile="${build.dir}/${tarball.tar.gz}" src="${build.dir}/${tarball.tar}" />
+    <delete file="${build.dir}/${tarball.tar}"/>
+  </target>
+
+</project>
