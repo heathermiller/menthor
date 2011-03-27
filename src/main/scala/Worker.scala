@@ -44,34 +44,17 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
       vertex.superstep = step - 1
       vertex.incoming = incoming(vertex)
 
-      val substeps = vertex.nextStep
-
-      //println("#substeps = " + substeps.size)
-      //val substep = substeps((step - 1) % substeps.size)
-      val substep = substeps
-
-      if (substep.isInstanceOf[CrunchStep[Data]]) {
-        val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
-        // assume every vertex has crunch step at this point
-        if (vertex == partition(0)) {
-          // compute aggregated value
-          val vertexValues = partition.map(v => v.value)
-          val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
-          crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
-        }
-      } else {
-        //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
-        val outgoing = substep.stepfun()
-        // set step field of outgoing messages to current step
-        for (out <- outgoing) out.step = step
-        allOutgoing = allOutgoing ::: outgoing
+      vertex.executeNextStep() match {
+        case Left(Some(c)) => crunch = c
+        case Left(None) =>    // do nothing
+        case Right(outgoing) =>
+          // set step field of outgoing messages to current step
+          for (out <- outgoing) out.step = step
+          allOutgoing = allOutgoing ::: outgoing
       }
 
       // move to next substep
-      vertex.nextStep = if (substep.next == null)
-        substep.firstSubstep
-      else
-        substep.next
+      vertex.moveToNextStep()
 
       // only worker which manages the first vertex evaluates
       // the termination condition

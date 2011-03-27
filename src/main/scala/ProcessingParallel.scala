@@ -23,8 +23,46 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   var superstep: Int = 0
   var incoming: List[Message[Data]] = List()
 
-  var nextStep: Substep[Data] =
+  private[parallel] var nextStep: Substep[Data] =
     update().firstSubstep
+
+  private[parallel] def moveToNextStep() {
+    nextStep =
+      if (nextStep.next == null) nextStep.firstSubstep
+      else nextStep.next
+  }
+
+  // returns either Option[Crunch] or List[Message[Data]]
+  private[parallel] def executeNextStep(): Either[Option[Crunch], List[Message[Data]]] = {
+    //println("#substeps = " + substeps.size)
+    //val substep = substeps((step - 1) % substeps.size)
+    val substep = nextStep
+
+    if (substep.isInstanceOf[CrunchStep[Data]]) {
+      val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
+      // assume every vertex has crunch step at this point
+      if (this == worker.partition(0)) {
+        // compute aggregated value
+        val vertexValues = worker.partition.map(v => v.value)
+        val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
+        Left(Some(Crunch(crunchStep.cruncher, crunchResult)))
+      } else
+        Left(None)
+    } else {
+      //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
+      val outgoing = if (!substep.cond.isEmpty) {
+        // execute step only if condition is false
+        val cond = substep.cond.get
+        if (!cond()) {
+          substep.stepfun() // execute step function
+        } else {
+          moveToNextStep()
+          executeNextStep()
+        }
+      }
+      outgoing
+    }
+  }
 
   /*
    * { ...
