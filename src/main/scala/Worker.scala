@@ -32,39 +32,61 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
     }
 
     step += 1 // beginning of next superstep
-
     var allOutgoing: List[Message[Data]] = List()
     var crunch: Option[Crunch[Data]] = None
 
-    // iterate over all vertices that this worker manages
-    for (vertex <- partition) {
-      // compute outgoing messages using application-level `update` method
-      // and forward to parent
-      // paper: obtain chain of closures again for new params!!
-      vertex.superstep = step - 1
-      vertex.incoming = incoming(vertex)
+    def executeNextStep() {
+      val substep = partition(0).currentStep
+      //println("#substeps = " + substep.size)
 
-      vertex.executeNextStep() match {
-        case Left(Some(c)) => crunch = c
-        case Left(None) =>    // do nothing
-        case Right(outgoing) =>
-          // set step field of outgoing messages to current step
-          for (out <- outgoing) out.step = step
-          allOutgoing = allOutgoing ::: outgoing
-      }
+      // check whether the next substep of vertex 0 is a crunch step
+      // assume that all vertices have crunch step at this point
+      if (substep.isInstanceOf[CrunchStep[Data]]) {
+        val fun = substep.asInstanceOf[CrunchStep[Data]].cruncher
+        // compute aggregated value
+        val vertexValues = partition.map(v => v.value)
+        val crunchResult = vertexValues.reduceLeft(fun)
+        crunch = Some(Crunch(fun, crunchResult))
+      } else {
+        crunch = None
+
+        // check if substep is enabled
+        // step is enabled only if condition is _false_
+        if (!substep.cond.isEmpty && substep.cond.get()) {
+          // not enabled, move all vertices to next substep
+          for (vertex <- partition)
+            vertex.moveToNextStep()
+          executeNextStep()
+        } else {
+          // iterate over all vertices that this worker manages
+          for (vertex <- partition) {
+            // compute outgoing messages using application-level `update` method
+            // and forward to parent
+            vertex.superstep = step - 1
+            // TODO: can we get rid of this assignment?
+            vertex.incoming = incoming(vertex)
+
+            val outgoing = vertex.currentStep.stepfun()
+            // set step field of outgoing messages to current step
+            for (out <- outgoing) out.step = step
+            allOutgoing = allOutgoing ::: outgoing
+          }
+
+          // evaluate the termination condition
+          //if (vertex == parent.vertices(0) && parent.cond())
+          if (global.cond()) { // TODO: check!!
+            //println(this + ": sending Stop to " + parent)
+            parent ! "Stop"
+            exit()
+          }
+        }
+      } // not a crunch step
 
       // move to next substep
-      vertex.moveToNextStep()
-
-      // only worker which manages the first vertex evaluates
-      // the termination condition
-      //if (vertex == parent.vertices(0) && parent.cond())
-      if (vertex == partition(0) && global.cond()) { // TODO: check!!
-        //println(this + ": sending Stop to " + parent)
-        parent ! "Stop"
-        exit()
-      }
+      for (vertex <- partition) vertex.moveToNextStep()
     }
+    executeNextStep()
+
     incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
       override def default(v: Vertex[Data]) = List()
     }

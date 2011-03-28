@@ -23,46 +23,41 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   var superstep: Int = 0
   var incoming: List[Message[Data]] = List()
 
-  private[parallel] var nextStep: Substep[Data] =
+  private[parallel] var currentStep: Substep[Data] =
+    // construct pipeline of substeps
     update().firstSubstep
 
   private[parallel] def moveToNextStep() {
-    nextStep =
-      if (nextStep.next == null) nextStep.firstSubstep
-      else nextStep.next
+    currentStep =
+      if (currentStep.next == null) currentStep.firstSubstep
+      else currentStep.next
   }
 
-  // returns either Option[Crunch] or List[Message[Data]]
-  private[parallel] def executeNextStep(): Either[Option[Crunch], List[Message[Data]]] = {
+  // returns either Option[Crunch[Data]] or List[Message[Data]]
+  // assume !substep.isInstanceOf[CrunchStep[Data]]
+  // (checked in Worker.superstep)
+/*
+  private[parallel] def executeNextStep(): Option[List[Message[Data]]] = {
     //println("#substeps = " + substeps.size)
     //val substep = substeps((step - 1) % substeps.size)
-    val substep = nextStep
+    val substep = currentStep
 
-    if (substep.isInstanceOf[CrunchStep[Data]]) {
-      val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
-      // assume every vertex has crunch step at this point
-      if (this == worker.partition(0)) {
-        // compute aggregated value
-        val vertexValues = worker.partition.map(v => v.value)
-        val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
-        Left(Some(Crunch(crunchStep.cruncher, crunchResult)))
-      } else
-        Left(None)
-    } else {
-      //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
-      val outgoing = if (!substep.cond.isEmpty) {
-        // execute step only if condition is false
-        val cond = substep.cond.get
-        if (!cond()) {
-          substep.stepfun() // execute step function
-        } else {
-          moveToNextStep()
-          executeNextStep()
-        }
+    //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
+    if (!substep.cond.isEmpty) {
+      // execute step only if condition is false
+      val cond = substep.cond.get
+      if (!cond()) {
+        Some(substep.stepfun()) // execute step function
+      } else None
+
+
+ {
+        moveToNextStep()
+        executeNextStep()
       }
-      outgoing
     }
   }
+*/
 
   /*
    * { ...
@@ -89,7 +84,7 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
 
 object Graph {
   var count = 0
-  def nextId = {
+  def nextId = synchronized {
     count += 1
     count
   }
@@ -186,22 +181,13 @@ class Graph[Data] extends Actor {
 
         case StartPropagation(numIterations) =>
           val parent = sender
-
           createWorkers()
-          //for (w <- workers) { w ! "Init" }
-
+ 
           var crunchResult: Option[Data] = None
-
           var shouldFinish = false
           var i = 1
           while ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
             i += 1
-            // 0 superstep: i == 2
-            // 1 superstep: i == 3
-            // 2 superstep: i == 4
-            // 3 superstep: i == 5
-
-            // time if (i - 2) % 3 == 0
             
             if (!crunchResult.isEmpty)
               for (w <- workers) { // go to next superstep
@@ -240,9 +226,9 @@ class Graph[Data] extends Actor {
 
             if (!shouldFinish) {
               // are we inside a crunch step?
-              if (!cruncher.isEmpty) {
+              if (!cruncher.isEmpty)
                 crunchResult = Some(workerResults.reduceLeft(cruncher.get))
-              } else {
+              else
                 crunchResult = None
 
                 //println(this + ": sending Outgoing to " + workers)
@@ -256,8 +242,7 @@ class Graph[Data] extends Actor {
                       //println(this + ": received DoneOutgoing")
                   }
                 }
-*/                
-              }
+*/
             }
           }
 
