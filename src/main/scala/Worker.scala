@@ -44,6 +44,7 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
       if (substep.isInstanceOf[CrunchStep[Data]]) {
         val fun = substep.asInstanceOf[CrunchStep[Data]].cruncher
         // compute aggregated value
+        //todo: do not produce intermediate result!
         val vertexValues = partition.map(v => v.value)
         val crunchResult = vertexValues.reduceLeft(fun)
         crunch = Some(Crunch(fun, crunchResult))
@@ -69,6 +70,7 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
             val outgoing = vertex.currentStep.stepfun()
             // set step field of outgoing messages to current step
             for (out <- outgoing) out.step = step
+            //todo: this is slow, replace with data structure that has fast concatenation
             allOutgoing = allOutgoing ::: outgoing
           }
 

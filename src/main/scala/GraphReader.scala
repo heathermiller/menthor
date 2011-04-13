@@ -1,4 +1,5 @@
-package processing.parallel
+package processing
+package parallel
 
 import scala.collection.mutable.{Map, HashMap}
 import scala.collection.mutable.ListBuffer
@@ -6,6 +7,8 @@ import scala.collection.mutable.ListBuffer
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{ Reader }
 import scala.util.parsing.input.CharArrayReader.EofCh
+
+import scala.collection.parallel.immutable.ParVector
 
 object GraphReader extends RegexParsers {
   override def skipWhitespace = false
@@ -53,6 +56,11 @@ object GraphReader extends RegexParsers {
       }
     }
     graph
+  }
+
+  def readParVector(lines: Iterator[String]): ParVector[Vertex[Double]] = {
+    val graph = readGraph(lines)
+    (new ParVector) ++ graph.vertices
   }
 
   def printGraph(g: Graph[Double]) {

@@ -74,6 +74,7 @@
       <exclude name="**/ProcessingParallelAkka.scala"/>
       <exclude name="**/GraphReaderAkka.scala"/>
       <exclude name="**/PageRankParallelAkka.scala"/>
+      <exclude name="**/SubstepsAkka.scala"/>
       <src><pathelement location="${src.dir}"/></src>
     </scalac>
   </target>

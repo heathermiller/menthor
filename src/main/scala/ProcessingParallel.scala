@@ -11,8 +11,10 @@ import Actor._
 abstract class Vertex[Data](val label: String, initialValue: Data) {
   // TODO: subclasses should not be able to mutate the list!
   var neighbors: List[Vertex[Data]] = List()
+  var ins: List[Vertex[Data]] = List()
 
   var value: Data = initialValue
+  /*@volatile*/ var prev: Data = value
 
   var graph: Graph[Data] = null
 
@@ -73,6 +75,7 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
   // TODO: should not be accessible from subclasses!
   def connectTo(v: Vertex[Data]) {
     neighbors = v :: neighbors
+    v.ins = this :: v.ins
   }
   
   def initialize() { }
@@ -182,7 +185,7 @@ class Graph[Data] extends Actor {
         case StartPropagation(numIterations) =>
           val parent = sender
           createWorkers()
- 
+
           var crunchResult: Option[Data] = None
           var shouldFinish = false
           var i = 1

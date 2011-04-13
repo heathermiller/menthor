@@ -9,6 +9,8 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
   def update(): Substep[Double] = mkSubstep({
 
     if (superstep >= 1) {
+      prev = value
+
       var sum = 0.0d
       for (msg <- incoming) {
         sum += msg.value
