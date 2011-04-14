@@ -1,8 +1,10 @@
-* Building the framework
+* Building the framework using SBT
 
-Using SBT. From root,
+From the project's root directory:
 $ sbt update
 $ sbt compile
+
+SBT will output the generated class files to `target/scala_2.8.1/classes`.
 
 * Building the PageRank example
 
@@ -10,8 +12,8 @@ $ scalac -cp classes -d classes src/main/scala/PageRankParallel.scala src/main/s
 
 * Running the PageRank example
 
-SBT action:
-$ sbt run '10 data/ 2000'
+From the SBT command line:
+> run 10 data/ 2000
 and select processing.parallel.PageRank
 
 Command-line arguments: #iterations datadir #pages
