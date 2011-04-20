@@ -16,6 +16,9 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
       + " Akka", libmenthor_akka)
 
     lazy val sssp = project("sssp", "Single Source Shortest Paths", libmenthor)
+
+    lazy val clustering = project("clustering", "Hierarchical Clustering",
+    libmenthor)
   }
 
   val scalatest = "org.scalatest" % "scalatest" % "1.3" % "test"
