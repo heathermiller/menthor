@@ -2,7 +2,8 @@ import sbt._
 
 class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
 
-  lazy val libmenthor = project("libmenthor", "Menthor Library")
+  lazy val libmenthor = project("libmenthor", "Menthor Library",
+    new DefaultProject(_) with ScalatestDependency)
 
   lazy val libmenthor_akka = project("libmenthor-akka", "Menthor Library with"
     + " Akka", new DefaultProject(_) with AkkaProject)
@@ -21,5 +22,7 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
     libmenthor)
   }
 
-  val scalatest = "org.scalatest" % "scalatest" % "1.3" % "test"
+  trait ScalatestDependency {
+    lazy val scalatest = "org.scalatest" % "scalatest" % "1.3" % "test"
+  }
 }
