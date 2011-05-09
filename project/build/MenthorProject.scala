@@ -6,7 +6,7 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
     new DefaultProject(_) with ScalatestDependency)
 
   lazy val libmenthor_akka = project("libmenthor-akka", "Menthor Library with"
-    + " Akka", new DefaultProject(_) with AkkaProject)
+    + " Akka", new DefaultProject(_) with AkkaProject with ScalatestDependency)
 
   lazy val examples = project("examples", "Menthor Examples", new Examples(_))
 

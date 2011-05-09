@@ -1,116 +1,10 @@
 package menthor.akka
 
-import scala.collection.mutable.{Map, HashMap}
-import scala.collection.mutable.ListBuffer
+import java.util.concurrent.CountDownLatch
 
 import akka.actor
 import actor.ActorRef
 import actor.Actor.actorOf
-
-import java.util.concurrent.CountDownLatch
-
-// step: the step in which the message was produced
-// TODO: for distribution need to change Vertex[Data] into vertex ID
-case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
-  /* Superstep in which message was created.
-   * TODO: step does not need to be visible in user code!
-   */
-  var step: Int = 0
-}
-
-// each Substep has a substep function and a reference to the previous Substep
-class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Substep[Data]) {
-  var next: Substep[Data] = null
-
-  // TODO: implement thenUntil(cond)
-  def then(block: => List[Message[Data]]): Substep[Data] = {
-    next = new Substep(() => block, this)
-    next
-  }
-
-  // TODO: merge crunch steps
-  def crunch(fun: (Data, Data) => Data): Substep[Data] = {
-    next = new CrunchStep(fun, this)
-    next
-  }
-
-  def size: Int = {
-    var currStep = firstSubstep
-    var count = 1
-    while (currStep.next != null) {
-      count += 1
-      currStep = currStep.next
-    }
-    count
-  }
-
-  private def firstSubstep = {
-    // follow refs back to the first substep
-    var currStep = this
-    while (currStep.previous != null)
-      currStep = currStep.previous
-    currStep
-  }
-
-  def fromHere(num: Int): Substep[Data] = {
-    if (num == 0)
-      this
-    else
-      this.next.fromHere(num - 1)
-  }
-
-  def apply(index: Int): Substep[Data] = {
-    val first = firstSubstep
-    if (index == 0) {
-      first
-    } else {
-      first.next.fromHere(index - 1)
-    }
-  }
-}
-
-class CrunchStep[Data](val cruncher: (Data, Data) => Data, previous: Substep[Data]) extends Substep[Data](null, previous)
-
-case class Crunch[Data](val cruncher: (Data, Data) => Data, val crunchResult: Data)
-
-case class CrunchResult[Data](res: Data)
-
-// To point out in paper: it's not a DSL for expressing/constructing/transforming graphs,
-// but rather a high-level API for graph /processing/.
-abstract class Vertex[Data](val label: String, initialValue: Data) {
-  // TODO: subclasses should not be able to mutate the list!
-  var neighbors: List[Vertex[Data]] = List()
-
-  var value: Data = initialValue
-
-  var graph: Graph[Data] = null
-
-  // graph has to initialize `worker` upon partitioning the list of vertices
-  // TODO: should not be accessible from subclasses!
-  var worker: ActorRef = null
-
-  /*
-   * { ...
-   *   List()
-   * } then {
-   *   ...
-   * }
-   */
-  implicit def mkSubstep(block: => List[Message[Data]]) =
-    new Substep(() => block, null)
-
-  // directed graph for now
-  // TODO: should not be accessible from subclasses!
-  def connectTo(v: Vertex[Data]) {
-    neighbors = v :: neighbors
-  }
-  
-  def initialize() { }
-
-  def update(superstep: Int, incoming: List[Message[Data]]): Substep[Data]
-
-  override def toString = "Vertex(" + label + ")"
-}
 
 object Graph {
   var count = 0
@@ -119,9 +13,6 @@ object Graph {
     count
   }
 }
-
-// Message type to indicate to graph that it should start propagation
-case class StartPropagation(numIterations: Int, latch: CountDownLatch)
 
 // TODO: maintain mapping from vertex to the worker which manages the vertex,
 // do this using worker field of Vertex
@@ -341,90 +232,4 @@ class Graph[Data] extends actor.Actor {
   def terminate() {
     self ! "Stop"
   }
-}
-
-object Test1 {
-  var count = 0
-  def nextcount: Int = {
-    count += 1
-    count
-  }
-}
-
-class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
-    {
-      value += 1
-      List()
-    }
-  }
-}
-
-      //, (res: Double, vertices: (Vertex, Vertex)) => {
-      // (T, (Vertex, Vertex)) => List[Message[Data]]
-
-      // (Vertex, Vertex) => (T, (Vertex, Vertex))
-      //(v1.value + v2.value, (v1, v2))
-
-class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
-    {
-      value += 1
-      List()
-    } crunch((v1: Double, v2: Double) => v1 + v2) then {
-      // result of crunch should be here as incoming message
-      incoming match {
-        case List(crunchResult) =>
-          value = crunchResult.value
-        case List() =>
-          // do nothing
-      }
-      List()
-    }
-  }
-}
-
-object Test {
-
-  def runTest1() {
-    println("running test1...")
-    var g: Graph[Double] = null
-    val ga = actorOf({ g = new Graph[Double]; g })
-    for (i <- 1 to 48) {
-      g.addVertex(new Test1Vertex)
-    }
-    ga.start()
-    g.iterate(1)
-    g.synchronized {
-      for (v <- g.vertices) {
-        if (v.value < 1) throw new Exception
-      }
-    }
-    g.terminate()
-    println("test1 OK")
-  }
-
-  def runTest2() {
-    println("running test2...")
-    var g: Graph[Double] = null
-    val ga = actorOf({ g = new Graph[Double]; g })
-    for (i <- 1 to 10) {
-      g.addVertex(new Test2Vertex)
-    }
-    ga.start()
-    g.iterate(3)
-    g.synchronized {
-      for (v <- g.vertices) {
-        if (v.value < 10) throw new Exception
-      }
-    }
-    g.terminate()
-    println("test2 OK")
-  }
-
-  def main(args: Array[String]) {
-    runTest1()
-    runTest2()
-  }
-
 }
