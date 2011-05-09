@@ -11,3 +11,6 @@ case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val v
 case class Crunch[Data](val cruncher: (Data, Data) => Data, val crunchResult: Data)
 
 case class CrunchResult[Data](res: Data)
+
+// Message type to indicate to graph that it should start propagation
+case class StartPropagation(numIterations: Int)
