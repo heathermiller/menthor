@@ -8,6 +8,10 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
   lazy val libmenthor_akka = project("libmenthor-akka", "Menthor Library with"
     + " Akka", new DefaultProject(_) with AkkaProject with ScalatestDep)
 
+  lazy val clusterService = project("cluster-service", "Cluster Service", new
+    DefaultProject(_) with AkkaRemoteDep with ScalatestDep,
+    libmenthor_akka)
+
   lazy val examples = project("examples", "Menthor Examples", new Examples(_))
 
   class Examples(info: ProjectInfo) extends ParentProject(info) {
@@ -20,6 +24,10 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
 
     lazy val clustering = project("clustering", "Hierarchical Clustering",
     libmenthor)
+  }
+
+  trait AkkaRemoteDep extends AkkaProject {
+    val akkaRemote = akkaModule("remote")
   }
 
   trait ScalatestDep {

@@ -1,5 +1,14 @@
 package menthor.akka
 
+import akka.actor.Actor
+import Actor._
+
+class Foreman extends Actor {
+  def receive = {
+    case "hello" => self.reply("world")
+  }
+}
+
 /*
 class Foreman(parent: Actor, var children: List[Actor]) extends Actor {
 
