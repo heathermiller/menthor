@@ -5,7 +5,7 @@ import Actor._
 
 class Foreman extends Actor {
   def receive = {
-    case "hello" => self.reply("world")
+    case "hello" => self.channel ! "world"
   }
 }
 

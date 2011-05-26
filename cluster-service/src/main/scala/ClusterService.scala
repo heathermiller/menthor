@@ -2,22 +2,29 @@ package menthor.akka
 
 import akka.actor.Actor
 import Actor._
+import akka.serialization.RemoteActorSerialization._
 
-/** */
 class ClusterService extends Actor {
   def receive = {
-    case CreateForeman => {
-      val foreman = actorOf[Foreman]
-      remote.registerByUuid(foreman)
-      self.reply(foreman.uuid.toString)
-    }
+    case CreateForeman =>
+      val foreman = actorOf[Foreman].start()
+      self.channel ! toRemoteActorRefProtocol(foreman).toByteArray
+  }
+
+  override def postStop() {
+    registry.shutdownAll()
+    remote.shutdown()
   }
 }
 
 object ClusterService {
-  def main(args: Array[String]) {
-    remote.start("localhost", 2552)
+  def run() {
+    remote.start()
     remote.register("menthor-cluster-service", actorOf[ClusterService])
+  }
+
+  def main(args: Array[String]) {
+    run()
   }
 }
 
