@@ -6,7 +6,7 @@ import akka.serialization.RemoteActorSerialization._
 
 sealed abstract class ClusterServiceMessage
 
-class RemoteActorRefMessage(actor: ActorRef) extends ClusterServiceMessage {
+class RemoteActorRefMessage(actor: ActorRef) extends ClusterServiceMessage with Serializable {
   val bin = toRemoteActorRefProtocol(actor).toByteArray
 }
 
@@ -14,10 +14,11 @@ object CreateForeman {
   def apply(parent: ActorRef) = new CreateForeman(parent)
 
   def unapply(data: Any) : Option[ActorRef] = {
-    if (! data.isInstanceOf[CreateForeman])
-      None
-    val parentRef = fromBinaryToRemoteActorRef(data.asInstanceOf[CreateForeman].bin)
-    registry.actorFor(parentRef.uuid) orElse Some(parentRef)
+    if (! data.isInstanceOf[CreateForeman]) None
+    else {
+      val parentRef = fromBinaryToRemoteActorRef(data.asInstanceOf[CreateForeman].bin)
+      registry.actorFor(parentRef.uuid) orElse Some(parentRef)
+    }
   }
 }
 
@@ -27,10 +28,11 @@ object ForemanCreated {
   def apply(foreman: ActorRef) = new ForemanCreated(foreman)
 
   def unapply(data: Any) : Option[ActorRef] = {
-    if (! data.isInstanceOf[ForemanCreated])
-      None
-    val foremanRef = fromBinaryToRemoteActorRef(data.asInstanceOf[ForemanCreated].bin)
-    registry.actorFor(foremanRef.uuid) orElse Some(foremanRef)
+    if (! data.isInstanceOf[ForemanCreated]) None
+    else {
+      val foremanRef = fromBinaryToRemoteActorRef(data.asInstanceOf[ForemanCreated].bin)
+      registry.actorFor(foremanRef.uuid) orElse Some(foremanRef)
+    }
   }
 }
 
@@ -42,16 +44,17 @@ object WorkersCreated {
   def apply(workers: List[ActorRef]) = new WorkersCreated(workers)
 
   def unapply(data: Any) : Option[List[ActorRef]] = {
-    if (! data.isInstanceOf[WorkersCreated])
-      None
-    Some(data.asInstanceOf[WorkersCreated].bins map { workerData =>
-      val workerRef = fromBinaryToRemoteActorRef(workerData)
-      registry.actorFor(workerRef.uuid) getOrElse workerRef
-    } )
+    if (! data.isInstanceOf[WorkersCreated]) None
+    else {
+      Some(data.asInstanceOf[WorkersCreated].bins map { workerData =>
+        val workerRef = fromBinaryToRemoteActorRef(workerData)
+        registry.actorFor(workerRef.uuid) getOrElse workerRef
+      } )
+    }
   }
 }
 
-class WorkersCreated(workers: List[ActorRef]) extends ClusterServiceMessage {
+class WorkersCreated(workers: List[ActorRef]) extends ClusterServiceMessage with Serializable {
   val bins = workers.map(toRemoteActorRefProtocol(_).toByteArray)
 }
 

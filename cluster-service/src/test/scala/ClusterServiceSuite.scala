@@ -1,4 +1,6 @@
-package menthor.akka
+package menthor.akka.cluster
+
+import menthor.akka.parallel.Graph
 
 import org.scalatest.fixture.FixtureFunSuite
 import scala.sys.SystemProperties
@@ -13,14 +15,13 @@ import akka.serialization.RemoteActorSerialization._
 class ClusterServiceSuite extends FixtureFunSuite {
   type FixtureParam = ActorRef
 
-  val listener = actorOf(new Actor {
-      def receive = {
-        case x => println("Remote Listener:" + x)
-      }
-    }).start()
+//  val listener = actorOf(new Actor {
+//      def receive = {
+//        case x => println("Remote Listener:" + x)
+//      }
+//    }).start()
 
-  remote.addListener(listener)
-
+//  remote.addListener(listener)
 
   def withFixture(test: OneArgTest) {
     // Find the class loader of the ClusterService class, should be a
@@ -44,28 +45,29 @@ class ClusterServiceSuite extends FixtureFunSuite {
 
     try {
       // Get the ActorRef of the ClusterService
-      val service = remote.actorFor("menthor-cluster-service", "localhost", 2552)
+      val service = remote.actorFor(classOf[ClusterService].getCanonicalName, "localhost", 2552)
       test(service)
       if (! service.isShutdown)
         service.stop()
     } finally {
       // TODO Takes a really long time, timeout somewhere?
-      assert(process.exitValue() == 0)
+      // assert(process.exitValue() == 0)
       process.destroy()
     }
   }
 
   test("create and contact foreman") { service =>
-    service !! CreateForeman match {
-      case Some(foreman: Array[Byte]) => contact(fromBinaryToRemoteActorRef(foreman))
+    val graph = actorOf[Graph]
+    service !! CreateForeman(graph) match {
+      case Some(ForemanCreated(foreman)) => contact(foreman)
       case None => fail("timeout when contacting cluster service")
       case Some(response) => fail("unknown response when creating foreman:\n" + response)
     }
   }
 
   def contact(foreman: ActorRef) = {
-    foreman !! "hello" match {
-      case Some("world") =>
+    foreman !! CreateWorkers(10) match {
+      case Some(WorkersCreated(workers)) => assert(workers.length == 10)
       case None => fail("timeout when contacting foreman")
       case Some(response) => fail("unknown response from foreman:\n" + response)
     }
