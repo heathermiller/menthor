@@ -15,13 +15,13 @@ import akka.serialization.RemoteActorSerialization._
 class ClusterServiceSuite extends FixtureFunSuite {
   type FixtureParam = ActorRef
 
-//  val listener = actorOf(new Actor {
-//      def receive = {
-//        case x => println("Remote Listener:" + x)
-//      }
-//    }).start()
+  val listener = actorOf(new Actor {
+      def receive = {
+        case x => println("Remote Listener:" + x)
+      }
+    }).start()
 
-//  remote.addListener(listener)
+  remote.addListener(listener)
 
   def withFixture(test: OneArgTest) {
     // Find the class loader of the ClusterService class, should be a
