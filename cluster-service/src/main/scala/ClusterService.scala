@@ -9,6 +9,7 @@ class ClusterService extends Actor {
     case CreateForeman(parent) =>
       val foreman = actorOf(new Foreman(parent)).start()
       self.channel ! ForemanCreated(foreman)
+    case x => println(x)
   }
 
   override def postStop() {
@@ -20,7 +21,7 @@ class ClusterService extends Actor {
 object ClusterService {
   def run() {
     remote.start()
-//    remote.register("menthor-cluster-service", actorOf[ClusterService])
+    remote.register(actorOf[ClusterService])
   }
 
   def main(args: Array[String]) {
