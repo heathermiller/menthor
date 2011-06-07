@@ -1,22 +1,32 @@
 package menthor.akka.cluster
 
-import menthor.akka.parallel.Worker
+import menthor.akka.processing.{Worker, SetupDone}
 
 import akka.actor.{Actor, ActorRef}
 import collection.mutable.ListBuffer
 
 class Foreman(val parent: ActorRef) extends Actor {
+  var children: List[ActorRef] = Nil
+
   def receive = {
-    case AvailableProcessors =>
-      self.channel ! AvailableProcessors(Runtime.getRuntime.availableProcessors)
     case CreateWorkers(count) =>
-      createWorkers(count)
+      children = createWorkers(count)
+      self.channel ! WorkersCreated(children)
+    case SetupDone =>
+      become(processing)
+      for (child <- children)
+        child ! SetupDone
   }
 
-  private def createWorkers(count: Int) {
-    var workers = new ListBuffer[ActorRef]
+  def processing: Actor.Receive = {
+    case _ =>
+  }
+
+
+  private def createWorkers(count: Int) = {
+    val workers = new ListBuffer[ActorRef]
     for (i <- 1 to count)
       workers += Actor.actorOf(new Worker(self)).start()
-    self.channel ! WorkersCreated(workers.toList)
+    workers.toList
   }
 }
