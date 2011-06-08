@@ -7,8 +7,8 @@ class Step[Data](
   val first: Step[Data] = previous getOrElse this
   var next: Option[Step[Data]] = None
 
-  def then(block: () => List[Message[Data]]): Step[Data] = {
-    next = Some(new Substep(block, Some(this)))
+  def then(block: => List[Message[Data]]): Step[Data] = {
+    next = Some(new Substep(block _, Some(this)))
     next.get
   }
 
@@ -17,8 +17,8 @@ class Step[Data](
     next.get
   }
 
-  def thenUntil(cond: () => Boolean)(block: () => List[Message[Data]]): Step[Data] = {
-    next = Some(new Substep(block, Some(this), Some(cond)))
+  def thenUntil(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] = {
+    next = Some(new Substep(block _, Some(this), Some(cond _)))
     next.get
   }
 

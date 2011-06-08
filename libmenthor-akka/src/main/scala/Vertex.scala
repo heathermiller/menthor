@@ -8,8 +8,8 @@ abstract class Vertex[Data] {
     currentStep = currentStep.next getOrElse currentStep.first
   }
 
-  private implicit def mkSubstep(block: => List[Message[Data]]) =
-    new Substep(() => block)
+  protected implicit def mkSubstep(block: => List[Message[Data]]): Step[Data] =
+    new Substep(block _)
 
   protected def update(): Step[Data]
 }
