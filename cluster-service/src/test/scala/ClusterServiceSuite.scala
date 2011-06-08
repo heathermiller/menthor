@@ -77,7 +77,7 @@ class ClusterServiceSuite extends FixtureFunSuite {
         case x => invalidResponse("cluster service", "getting the number of available processors", x)
     }
     info("creating foreman")
-    val foreman: ActorRef = service !! CreateForeman(graph) match {
+    val foreman: ActorRef = service !! CreateForeman[Int](graph) match {
       case Some(ForemanCreated(foremanRef)) => foremanRef
       case x => invalidResponse("cluster service", "creating foreman", x)
     }

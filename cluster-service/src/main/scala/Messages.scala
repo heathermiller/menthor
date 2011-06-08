@@ -14,9 +14,9 @@ class RemoteActorRefMessage(actor: ActorRef) extends ClusterServiceMessage with 
 }
 
 object CreateForeman {
-  def apply(parent: ActorRef) = new CreateForeman(parent)
+  def apply[D: Manifest](parent: ActorRef) = new CreateForeman[D](parent)
 
-  def unapply(msg: CreateForeman): Option[ActorRef] = {
+  def unapply(msg: CreateForeman[_]): Option[ActorRef] = {
     if (msg eq null) None
     else {
       val parentRef = fromBinaryToRemoteActorRef(msg.bin)
@@ -25,7 +25,9 @@ object CreateForeman {
   }
 }
 
-class CreateForeman(parent: ActorRef) extends RemoteActorRefMessage(parent)
+class CreateForeman[D](parent: ActorRef)(implicit val manifest: Manifest[D]) extends RemoteActorRefMessage(parent) {
+  type Data = D
+}
 
 object ForemanCreated {
   def apply(foreman: ActorRef) = new ForemanCreated(foreman)

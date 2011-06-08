@@ -8,8 +8,9 @@ class ClusterService extends Actor {
   def receive = {
     case AvailableProcessors =>
       self.channel ! AvailableProcessors(Runtime.getRuntime.availableProcessors)
-    case CreateForeman(parent) =>
-      val foreman = actorOf(new Foreman(parent)).start()
+    case msg @ CreateForeman(parent) =>
+      implicit val m: Manifest[msg.Data] = msg.manifest
+      val foreman = actorOf(new Foreman[msg.Data](parent)).start()
       self.channel ! ForemanCreated(foreman)
   }
 }

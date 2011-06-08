@@ -5,7 +5,7 @@ import menthor.akka.processing.{Worker, SetupDone}
 import akka.actor.{Actor, ActorRef}
 import collection.mutable.ListBuffer
 
-class Foreman(val parent: ActorRef) extends Actor {
+class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
   var children: List[ActorRef] = Nil
 
   def receive = {
@@ -26,7 +26,7 @@ class Foreman(val parent: ActorRef) extends Actor {
   private def createWorkers(count: Int) = {
     val workers = new ListBuffer[ActorRef]
     for (i <- 1 to count)
-      workers += Actor.actorOf(new Worker(self)).start()
+      workers += Actor.actorOf(new Worker[Data](self)).start()
     workers.toList
   }
 }
