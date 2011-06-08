@@ -1,7 +1,10 @@
 package menthor.akka.processing
 
-case class Message[Data](source: VertexRef, dest: VertexRef, value: Data) {
-  var step: Int = 0
-}
+case class Message[Data](dest: VertexRef, value: Data)(
+  implicit val source: VertexRef,
+  implicit val step: Int
+)
 
-case object SetupDone
+sealed abstract class SetupMessage extends Serializable
+
+case object SetupDone extends SetupMessage
