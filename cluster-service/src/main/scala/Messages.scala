@@ -4,12 +4,12 @@ import akka.actor.ActorRef
 import akka.actor.Actor.registry
 import akka.serialization.RemoteActorSerialization._
 
-sealed abstract class ClusterServiceMessage
+sealed abstract class ClusterServiceMessage extends Serializable
 
 case object AvailableProcessors extends ClusterServiceMessage
 case class AvailableProcessors(count: Int) extends ClusterServiceMessage
 
-class RemoteActorRefMessage(actor: ActorRef) extends ClusterServiceMessage with Serializable {
+class RemoteActorRefMessage(actor: ActorRef) extends ClusterServiceMessage {
   val bin = toRemoteActorRefProtocol(actor).toByteArray
 }
 
@@ -59,6 +59,6 @@ object WorkersCreated {
   }
 }
 
-class WorkersCreated(workers: List[ActorRef]) extends ClusterServiceMessage with Serializable {
+class WorkersCreated(workers: List[ActorRef]) extends ClusterServiceMessage {
   val bins = workers.map(toRemoteActorRefProtocol(_).toByteArray)
 }
