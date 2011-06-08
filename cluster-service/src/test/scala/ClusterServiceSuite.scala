@@ -6,6 +6,7 @@ import org.scalatest.fixture.FixtureFunSuite
 import scala.sys.SystemProperties
 import scala.sys.process.{Process, ProcessBuilder, ProcessLogger}
 import java.net.URLClassLoader
+import java.util.concurrent.CountDownLatch
 
 import akka.actor.{Actor, ActorRef}
 import Actor._
@@ -25,6 +26,7 @@ object ClusterServiceAppFixture extends App {
   remote.addListener(listener)
   
   ClusterService.run()
+  remote.actorFor("test-service", "localhost", 1234) ! "Ready"
   ClusterService.keepAlive.await
   System.exit(0)
 }
@@ -53,12 +55,22 @@ class ClusterServiceSuite extends FixtureFunSuite {
     val classPath = loader.getURLs.map(_.getPath).reduceLeft(_ + psep + _)
     val mainClass = classOf[ClusterServiceAppFixture].getCanonicalName
     
+    val serviceReady = new CountDownLatch(1)
+    remote.start("localhost", 1234)
+    remote.register("test-service", actorOf(new Actor {
+      def receive = {
+        case "Ready" =>
+          serviceReady.countDown()
+          self.stop()
+      }
+    } ) )
     val logger = ProcessLogger((x: String) => println("ClusterService: " + x))
     val process = Process(path, Seq("-cp", classPath, mainClass)).run(logger)
 
-    // Wait for forked JVM
-    // TODO find a better way
-    Thread.sleep(1000)
+    // Wait for the ready signal from the cluster service
+    serviceReady.await
+    remote.unregister("test-service")
+    remote.shutdown()
 
     // Get the ActorRef of the ClusterService
     val service = remote.actorFor(classOf[ClusterService].getCanonicalName, "localhost", 2552)
