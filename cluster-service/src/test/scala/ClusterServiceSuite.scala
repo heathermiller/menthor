@@ -24,11 +24,15 @@ object ClusterServiceAppFixture extends App {
 
   registry.addListener(listener)
   remote.addListener(listener)
-  
+
   ClusterService.run()
   remote.actorFor("test-service", "localhost", 1234) ! "Ready"
   ClusterService.keepAlive.await
   System.exit(0)
+}
+
+class TestDataInput extends AbstractDataInput[Int, Int] {
+  def dummy = 42
 }
 
 class ClusterServiceSuite extends FixtureFunSuite {
@@ -54,7 +58,7 @@ class ClusterServiceSuite extends FixtureFunSuite {
     val path = prop("java.home") + fsep + "bin" + fsep + "java"
     val classPath = loader.getURLs.map(_.getPath).reduceLeft(_ + psep + _)
     val mainClass = classOf[ClusterServiceAppFixture].getCanonicalName
-    
+
     val serviceReady = new CountDownLatch(1)
     remote.start("localhost", 1234)
     remote.register("test-service", actorOf(new Actor {
@@ -102,6 +106,11 @@ class ClusterServiceSuite extends FixtureFunSuite {
     val worker: ActorRef = foreman !! CreateWorkers(1) match {
       case Some(WorkersCreated(List(workerRef))) => workerRef
       case x => invalidResponse("foreman", "creating worker", x)
+    }
+    info("creating vertices")
+    worker !! CreateVertices(new TestDataInput) match {
+      case Some(VerticesCreated) =>
+      case x => invalidResponse("worker", "creating vertex", x)
     }
   }
 
