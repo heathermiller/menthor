@@ -25,6 +25,8 @@ object ClusterServiceAppFixture extends App {
   remote.addListener(listener)
   
   ClusterService.run()
+  ClusterService.keepAlive.await
+  System.exit(0)
 }
 
 class ClusterServiceSuite extends FixtureFunSuite {
@@ -62,6 +64,9 @@ class ClusterServiceSuite extends FixtureFunSuite {
     val service = remote.actorFor(classOf[ClusterService].getCanonicalName, "localhost", 2552)
     try {
       test(service)
+      if (service.isRunning)
+        service.stop()
+      assert(process.exitValue() == 0)
     } finally {
       process.destroy()
       remote.removeListener(listener)
