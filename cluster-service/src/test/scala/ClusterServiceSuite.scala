@@ -1,6 +1,6 @@
 package menthor.akka.cluster
 
-import menthor.akka.parallel.Graph
+import menthor.akka.processing._
 
 import org.scalatest.fixture.FixtureFunSuite
 import scala.sys.SystemProperties
