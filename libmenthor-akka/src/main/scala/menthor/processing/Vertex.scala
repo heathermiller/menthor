@@ -1,6 +1,8 @@
 package menthor.processing
 
-abstract class Vertex[Data] {
+trait Vertex[Data] {
+  val ref: VertexRef = new VertexRef
+
   private[processing] var currentStep: Step[Data] =
     update().first
 
