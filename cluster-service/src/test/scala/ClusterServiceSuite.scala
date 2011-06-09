@@ -32,7 +32,7 @@ object ClusterServiceAppFixture extends App {
 }
 
 class TestDataInput extends AbstractDataInput[Int, Int] {
-  def dummy = 42
+  def owner(vid: VertexID): ActorRef = null
 }
 
 class ClusterServiceSuite extends FixtureFunSuite {
@@ -112,6 +112,13 @@ class ClusterServiceSuite extends FixtureFunSuite {
       case Some(VerticesCreated) =>
       case x => invalidResponse("worker", "creating vertex", x)
     }
+    info("share vertices")
+    worker !! ShareVertices match {
+      case Some(VerticesShared) =>
+      case x => invalidResponse("worker", "share vertices", x)
+    }
+    info("graph setup successful")
+    worker ! SetupDone
   }
 
   def invalidResponse(actorName: String, action: String, response: Any) = response match {

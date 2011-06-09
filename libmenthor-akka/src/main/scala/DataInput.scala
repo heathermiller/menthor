@@ -4,15 +4,14 @@ import akka.actor.ActorRef
 
 trait DataInput[Data] extends Serializable {
   type VertexID
-  implicit def vidManifest: Manifest[VertexID]
+  implicit def vidmanifest: Manifest[VertexID]
 
-  def dummy: VertexID
 //  def ownedVertices(worker: ActorRef): Map[VertexID, Iterable[VertexID]]
-//  def vertexOwner(vid: VertexID): ActorRef
+  def owner(vid: VertexID): ActorRef
 //  def createVertex(vid: VertexID): Vertex[Data]
 }
 
 abstract class AbstractDataInput[Data, VID: Manifest] extends DataInput[Data] {
   type VertexID = VID
-  def vidManifest = manifest[VID]
+  def vidmanifest = manifest[VID]
 }

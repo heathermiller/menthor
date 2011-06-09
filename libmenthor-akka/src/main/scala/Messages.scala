@@ -24,3 +24,15 @@ object CreateVertices {
 }
 
 case object VerticesCreated extends SetupMessage
+
+case object ShareVertices extends SetupMessage
+
+case object VerticesShared extends SetupMessage
+
+case class RequestVertexRef[VertexID](vid: VertexID)(
+  implicit val manifest: Manifest[VertexID]
+)
+
+case class VertexRefForID[VertexID](vid: VertexID, ref: VertexRef)(
+  implicit val manifest: Manifest[VertexID]
+)
