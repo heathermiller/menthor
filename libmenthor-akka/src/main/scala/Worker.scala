@@ -3,6 +3,12 @@ package menthor.akka.processing
 import akka.actor.{Actor, ActorRef, Channel, Uuid}
 import scala.collection.mutable
 
+object Worker {
+  val vertexCreator = new ThreadLocal[Option[ActorRef]] {
+    override def initialValue = None
+  }
+}
+
 class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   val vertices = mutable.Map.empty[Uuid, Vertex[Data]]
 
@@ -13,15 +19,30 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   def receive = {
     case CreateVertices(source) =>
       createVertices(source)
+      Worker.vertexCreator.get match {
+        case Some(_) => throw new IllegalStateException("A worker is already creating vertices")
+        case None => Worker.vertexCreator.set(Some(self))
+      }
       self.channel ! VerticesCreated
+      Worker.vertexCreator.remove()
   }
 
   def createVertices(source: DataInput[Data]) {
     implicit val vidmanifest = source.vidmanifest
+
+    val subgraph = source.vertices(self)
     val knownVertices = mutable.Map.empty[source.VertexID, VertexRef]
     val unknownVertices = mutable.Set.empty[source.VertexID]
-    // Compute known/unknown vertices from source
+    for ((vid, neighbors) <- subgraph) {
+      val vertex = source.createVertex(vid)
+      vertices += (vertex.ref.uuid -> vertex)
+      knownVertices += (vid -> vertex.ref)
+      unknownVertices ++= neighbors
+    }
+    unknownVertices --= knownVertices.keys
+
     var channel: Option[Channel[Any]] = None
+
     def share: Actor.Receive = {
       case ShareVertices =>
         if (unknownVertices.isEmpty)
@@ -33,7 +54,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         }
       case msg @ VertexRefForID(_vid, ref) if msg.manifest == manifest[source.VertexID] =>
         val vid = _vid.asInstanceOf[source.VertexID]
-        knownVertices(vid) = ref
+        knownVertices += (vid -> ref)
         unknownVertices -= vid
         if (unknownVertices.isEmpty && channel.isDefined)
           channel.get ! VerticesShared
@@ -41,9 +62,13 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         val vid = _vid.asInstanceOf[source.VertexID]
         self.channel ! VertexRefForID(vid, knownVertices(vid))
       case SetupDone =>
-        // Add neighbours to vertices
+        for ((vid, neighbors) <- subgraph) {
+          val vertex = vertices(knownVertices(vid).uuid)
+          for (nid <- neighbors)
+            vertex.connectTo(knownVertices(nid))
+        }
         become(processing)
-        // Notify graph that we are ready for processing
+        parent ! SetupDone
     }
     become(share)
   }

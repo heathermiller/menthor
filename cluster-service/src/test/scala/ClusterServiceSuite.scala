@@ -32,7 +32,9 @@ object ClusterServiceAppFixture extends App {
 }
 
 class TestDataInput extends AbstractDataInput[Int, Int] {
-  def owner(vid: VertexID): ActorRef = null
+  def vertices(worker: ActorRef) = Map.empty
+  def owner(vid: VertexID) = null
+  def createVertex(vid: VertexID) = null
 }
 
 class ClusterServiceSuite extends FixtureFunSuite {

@@ -11,5 +11,7 @@ abstract class Vertex[Data] {
   protected implicit def mkSubstep(block: => List[Message[Data]]): Step[Data] =
     new Substep(block _)
 
+  def connectTo(successor: VertexRef): Unit
+
   protected def update(): Step[Data]
 }

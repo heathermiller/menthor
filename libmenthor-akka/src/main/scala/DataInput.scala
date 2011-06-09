@@ -6,9 +6,9 @@ trait DataInput[Data] extends Serializable {
   type VertexID
   implicit def vidmanifest: Manifest[VertexID]
 
-//  def ownedVertices(worker: ActorRef): Map[VertexID, Iterable[VertexID]]
+  def vertices(worker: ActorRef): Map[VertexID, Iterable[VertexID]]
   def owner(vid: VertexID): ActorRef
-//  def createVertex(vid: VertexID): Vertex[Data]
+  def createVertex(vid: VertexID): Vertex[Data]
 }
 
 abstract class AbstractDataInput[Data, VID: Manifest] extends DataInput[Data] {
