@@ -1,4 +1,4 @@
-package menthor.akka.processing
+package menthor.processing
 
 abstract class Vertex[Data] {
   private[processing] var currentStep: Step[Data] =

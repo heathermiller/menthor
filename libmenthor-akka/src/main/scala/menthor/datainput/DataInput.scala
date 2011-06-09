@@ -1,4 +1,6 @@
-package menthor.akka.processing
+package menthor.datainput
+
+import menthor.processing.{Vertex, VertexRef}
 
 import akka.actor.ActorRef
 

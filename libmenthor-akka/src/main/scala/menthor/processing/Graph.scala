@@ -1,4 +1,4 @@
-package menthor.akka.processing
+package menthor.processing
 
 import akka.actor.Actor
 

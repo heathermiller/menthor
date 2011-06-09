@@ -1,4 +1,4 @@
-package menthor.akka.processing
+package menthor.processing
 
 import akka.actor.{Actor, ActorRef, newUuid, Uuid}
 import akka.util.HashCode

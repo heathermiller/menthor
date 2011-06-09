@@ -1,6 +1,6 @@
-package menthor.akka.cluster
+package menthor.cluster
 
-import menthor.akka.processing.{Worker, SetupDone}
+import menthor.processing.{Worker, SetupDone}
 
 import akka.actor.{Actor, ActorRef}
 import collection.mutable.ListBuffer

@@ -1,4 +1,4 @@
-package menthor.akka.cluster
+package menthor.cluster
 
 import akka.actor.ActorRef
 import akka.actor.Actor.registry

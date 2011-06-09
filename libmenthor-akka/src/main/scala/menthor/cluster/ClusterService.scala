@@ -1,4 +1,4 @@
-package menthor.akka.cluster
+package menthor.cluster
 
 import akka.actor.Actor
 import Actor._

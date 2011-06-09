@@ -1,4 +1,4 @@
-package menthor.akka.processing
+package menthor.processing
 
 class Step[Data](
   val previous: Option[Step[Data]] = None,

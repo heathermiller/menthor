@@ -1,4 +1,6 @@
-package menthor.akka.processing
+package menthor.processing
+
+import menthor.datainput.DataInput
 
 import akka.actor.{Actor, ActorRef, Channel, Uuid}
 import scala.collection.mutable

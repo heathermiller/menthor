@@ -1,4 +1,6 @@
-package menthor.akka.processing
+package menthor.processing
+
+import menthor.datainput.DataInput
 
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,

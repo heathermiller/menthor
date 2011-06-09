@@ -1,6 +1,7 @@
-package menthor.akka.cluster
+package menthor.cluster
 
-import menthor.akka.processing._
+import menthor.processing._
+import menthor.datainput._
 
 import org.scalatest.fixture.FixtureFunSuite
 import scala.sys.SystemProperties
