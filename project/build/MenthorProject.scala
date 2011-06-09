@@ -2,33 +2,31 @@ import sbt._
 
 class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
 
-  lazy val libmenthor = project("libmenthor", "Menthor Library",
+  lazy val libmenthor = project("libmenthor", "libmenthor",
     new DefaultProject(_) with ScalatestDep)
 
-  lazy val libmenthor_akka = project("libmenthor-akka", "Menthor Library with"
-    + " Akka", new DefaultProject(_) with AkkaProject with ScalatestDep)
+  lazy val libmenthor_akka = project("libmenthor-akka", "libmenthor-akka",
+    new DefaultProject(_) with AkkaRemoteDep with ScalatestDep {
+      override def compileOptions = super.compileOptions ++ Seq(Unchecked)
+    } )
 
-  lazy val clusterService = project("cluster-service", "Cluster Service", new
-    DefaultProject(_) with AkkaRemoteDep with ScalatestDep,
-    libmenthor_akka)
-
-  lazy val examples = project("examples", "Menthor Examples", new Examples(_))
+  lazy val examples = project("examples", "examples", new Examples(_))
 
   class Examples(info: ProjectInfo) extends ParentProject(info) {
-    lazy val pagerank = project("pagerank", "Wikipedia Pagerank", libmenthor)
+    lazy val pagerank = project("pagerank", "pagerank", libmenthor)
 
-    lazy val pagerank_akka = project("pagerank-akka", "Wikipedia Pagerank with"
-      + " Akka", libmenthor_akka)
+    lazy val pagerank_akka = project("pagerank-akka", "pagerank-akka",
+      libmenthor_akka)
 
-    lazy val sssp = project("sssp", "Single Source Shortest Paths", libmenthor)
+    lazy val sssp = project("sssp", "sssp", libmenthor)
 
-    lazy val clustering = project("clustering", "Hierarchical Clustering",
-    libmenthor)
+    lazy val clustering = project("clustering", "hierarchical-clustering",
+      libmenthor)
   }
 
   trait AkkaRemoteDep extends AkkaProject {
     val akkaRemote = akkaModule("remote")
-  }
+    }
 
   trait ScalatestDep {
     val scalatest = "org.scalatest" % "scalatest_2.9.0" % "1.4.1" % "test"

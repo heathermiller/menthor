@@ -1,4 +1,4 @@
-# Structure of the project
+#Patho Structure of the project
 
 The Menthor project is structured into several sub-projects:
 
@@ -40,6 +40,10 @@ interactive SBT session:
     > project <name>
     > <command>
 
+This is the same as running (spaces inside name and command must be escaped):
+
+    $ sbt project <name> <command>
+
 # Running the examples
 
 To run an example, you first have to switch to the project from an interactive
@@ -59,7 +63,7 @@ The Pagerank application takes 3 arguments:
 For example, you can run Pagerank with the following commands and get the
 given result:
 
-    > project Wikipedia Pagerank
+    > project pagerank
     > run 10 data/ 2000
     …
     [info] == Wikipedia Pagerank / run ==
@@ -92,7 +96,7 @@ The Hierarchical Clustering application takes 4 arguments:
 
 You use the following commands to run the application:
 
-    > project Hierarchical Clustering
+    > project hierarchical-clustering
     > run <par|seq> <true|false> <data file> <input size>
 
 For example
@@ -105,5 +109,5 @@ The SSSP application takes 1 argument, the number of nodes in a generated
 binary tree with non-weighted directed edges and uses the root of the tree as
 the source.
 
-    > project Single Source Shortest Paths
+    > project sssp
     > run <number of nodes>
