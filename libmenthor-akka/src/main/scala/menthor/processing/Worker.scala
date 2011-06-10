@@ -3,35 +3,45 @@ package menthor.processing
 import menthor.datainput.DataInput
 
 import akka.actor.{Actor, ActorRef, Channel, Uuid}
-import scala.collection.mutable
 
 object Worker {
-  val vertexCreator = new ThreadLocal[Option[ActorRef]] {
+  val vertexCreator = new ThreadLocal[Option[Worker[_]]] {
     override def initialValue = None
   }
 }
 
 class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
-  val vertices = mutable.Map.empty[Uuid, Vertex[Data]]
+  private var vertices = Map.empty[Uuid, Vertex[Data]]
 
-  def superstep = 0
+  private var carryOn = Set.empty[Uuid]
 
-  def incoming(vertex: Vertex[Data]) = Nil
+  private var _totalNumVertices: Int = 0
+
+  private var _superstep: Superstep = 0
+
+  def totalNumVertices = _totalNumVertices
+
+  def superstep: Superstep = _superstep
+
+  def incoming(vUuid: Uuid) = Nil
+
+  def voteToHalt(vUuid: Uuid) { carryOn - vUuid }
 
   def receive = {
     case CreateVertices(source) =>
-      createVertices(source)
       Worker.vertexCreator.get match {
         case Some(_) => throw new IllegalStateException("A worker is already creating vertices")
-        case None => Worker.vertexCreator.set(Some(self))
+        case None => Worker.vertexCreator.set(Some(this))
       }
-      self.channel ! VerticesCreated
+      createVertices(source)
       Worker.vertexCreator.remove()
+      self.channel ! VerticesCreated
   }
 
   def createVertices(source: DataInput[Data]) {
     implicit val vidmanifest = source.vidmanifest
 
+    _totalNumVertices = source.numVertices
     val subgraph = source.vertices(self)
     var knownVertices = Map.empty[source.VertexID, VertexRef]
     var unknownVertices = Set.empty[source.VertexID]

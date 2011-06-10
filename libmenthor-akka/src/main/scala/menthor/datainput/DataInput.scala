@@ -8,6 +8,7 @@ trait DataInput[Data] extends Serializable {
   type VertexID
   implicit def vidmanifest: Manifest[VertexID]
 
+  def numVertices: Int
   def vertices(worker: ActorRef): Map[VertexID, Iterable[VertexID]]
   def owner(vid: VertexID): ActorRef
   def createVertex(vid: VertexID): Vertex[Data]

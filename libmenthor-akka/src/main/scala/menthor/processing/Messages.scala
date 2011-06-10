@@ -43,8 +43,10 @@ case class CrunchResult[Data](result: Data) extends CrunchMessage
 
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,
-  implicit val step: Int
+  implicit val step: Superstep
 )
+
+case class TransmitMessage[Data](dest: Uuid, value: Data, source: Uuid, step: Superstep)
 
 sealed abstract class SetupMessage extends Serializable
 

@@ -8,7 +8,7 @@ extends Comparable[VertexRef] with Equals with Serializable {
   val uuid = _uuid getOrElse newUuid
   val worker = _worker getOrElse {
     Worker.vertexCreator.get match {
-      case Some(wref) => wref
+      case Some(wrkr) => wrkr.self
       case None => throw new IllegalStateException("Not inside a worker")
     }
   }
