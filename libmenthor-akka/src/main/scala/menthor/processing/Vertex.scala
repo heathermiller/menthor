@@ -44,5 +44,8 @@ trait Vertex[Data] {
 
   protected def update(): Step[Data]
 
-  protected final def voteToHalt() { worker.voteToHalt(ref.uuid) }
+  protected final def voteToHalt(): List[Message[Data]] = {
+    worker.voteToHalt(ref.uuid)
+    Nil
+  }
 }

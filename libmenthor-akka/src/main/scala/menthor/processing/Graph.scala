@@ -23,7 +23,7 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (childrenCount > 1) become(stepStatus(children, childrenCount - 1, msg), false)
       else msg match {
-        case StopRequest | Halt =>
+        case Halt =>
           for (child <- children)
             child ! Stop
           self.stop()
@@ -49,7 +49,7 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (remaining > 1) become(stepStatus(children, remaining - 1, _status))
       else _status match {
-        case StopRequest | Halt =>
+        case Halt =>
           for (child <- children)
             child ! Stop
           self.stop()

@@ -14,15 +14,12 @@ case object Next extends ControlMessage
 
 object WorkerStatusMessage {
   def reduceStatusMessage(ctrl1: WorkerStatusMessage, ctrl2: WorkerStatusMessage) = (ctrl1, ctrl2) match {
-    case (StopRequest, _) | (_, StopRequest) => StopRequest
     case (Done, _) | (_, Done) => Done
     case (Halt, Halt) => Halt
   }
 }
 
 sealed abstract class WorkerStatusMessage extends InternalMessage
-
-case object StopRequest extends WorkerStatusMessage
 
 case object Done extends WorkerStatusMessage
 

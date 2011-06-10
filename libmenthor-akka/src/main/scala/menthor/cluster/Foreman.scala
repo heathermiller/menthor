@@ -1,7 +1,7 @@
 package menthor.cluster
 
 import menthor.processing.Worker
-import menthor.processing.{ Stop, Next, WorkerStatusMessage, StopRequest, Done, Halt, Crunch, CrunchResult, SetupDone }
+import menthor.processing.{ Stop, Next, WorkerStatusMessage, Done, Halt, Crunch, CrunchResult, SetupDone }
 import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
