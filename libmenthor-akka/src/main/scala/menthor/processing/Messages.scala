@@ -2,6 +2,8 @@ package menthor.processing
 
 import menthor.datainput.DataInput
 
+import akka.actor.Uuid
+
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,
   implicit val step: Int
@@ -35,6 +37,6 @@ case class RequestVertexRef[VertexID](vid: VertexID)(
   implicit val manifest: Manifest[VertexID]
 )
 
-case class VertexRefForID[VertexID](vid: VertexID, ref: VertexRef)(
+case class VertexRefForID[VertexID](vid: VertexID, vertexUuid: Uuid, workerUuid: Uuid)(
   implicit val manifest: Manifest[VertexID]
 )

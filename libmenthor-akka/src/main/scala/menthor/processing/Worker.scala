@@ -54,15 +54,18 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           for (vid <- unknownVertices)
             source.owner(vid) ! RequestVertexRef(vid)
         }
-      case msg @ VertexRefForID(_vid, ref) if msg.manifest == manifest[source.VertexID] =>
+      case msg @ VertexRefForID(_vid, vUuid, wUuid) if msg.manifest == manifest[source.VertexID] =>
         val vid = _vid.asInstanceOf[source.VertexID]
-        knownVertices += (vid -> ref)
+        val workerRef = Actor.registry.actorFor(wUuid) orElse self.sender
+
+        knownVertices += (vid -> new VertexRef(Some(vUuid), workerRef))
         unknownVertices -= vid
+
         if (unknownVertices.isEmpty && channel.isDefined)
           channel.get ! VerticesShared
       case msg @ RequestVertexRef(_vid) if msg.manifest == manifest[source.VertexID] =>
         val vid = _vid.asInstanceOf[source.VertexID]
-        self.channel ! VertexRefForID(vid, knownVertices(vid))
+        self.channel ! VertexRefForID(vid, knownVertices(vid).uuid, self.uuid)
       case SetupDone =>
         for ((vid, neighbors) <- subgraph) {
           val vertex = vertices(knownVertices(vid).uuid)
