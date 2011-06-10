@@ -1,4 +1,4 @@
-package menthor.datainput
+package menthor.io
 
 import menthor.processing.{Vertex, VertexRef}
 

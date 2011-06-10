@@ -1,7 +1,6 @@
 package menthor.processing
 
-import menthor.datainput.DataInput
-import Crunch.reduceCrunch
+import menthor.io.{DataInput, DataOutput}
 
 import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid}
 import collection.mutable
@@ -109,7 +108,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       mailbox(dest) = msg :: mailbox(dest)
     }
     case Stop =>
-      // Data Output
+      become(processResults)
     case Next =>
       nextstep()
   }
@@ -177,5 +176,11 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         nextstep()
       }
     }
+  }
+
+  def processResults: Actor.Receive = {
+    case ProcessResults(output) =>
+      output.process(vertices.values)
+      self.stop()
   }
 }

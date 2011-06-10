@@ -1,6 +1,6 @@
 package menthor.processing
 
-import menthor.datainput.DataInput
+import menthor.io.{DataInput, DataOutput}
 
 import akka.actor.Uuid
 
@@ -78,3 +78,17 @@ case class RequestVertexRef[VertexID](vid: VertexID)(
 case class VertexRefForID[VertexID](vid: VertexID, vertexUuid: Uuid, workerUuid: Uuid)(
   implicit val manifest: Manifest[VertexID]
 ) extends SetupMessage
+
+class ProcessResults[Data](val output: DataOutput[Data])(
+  implicit val manifest: Manifest[Data]
+) extends SetupMessage
+
+object ProcessResults {
+  def apply[Data: Manifest](output: DataOutput[Data]) =
+    new ProcessResults(output)
+
+  def unapply[Data: Manifest](msg: ProcessResults[_]): Option[DataOutput[Data]] = {
+    if ((msg eq null) || (msg.manifest != manifest[Data])) None
+    else Some(msg.asInstanceOf[ProcessResults[Data]].output)
+  }
+}
