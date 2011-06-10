@@ -38,6 +38,6 @@ object ClusterService {
   def main(args: Array[String]) {
     run()
     keepAlive.await
-    System.exit(0)
+    sys.exit()
   }
 }

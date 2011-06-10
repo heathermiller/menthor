@@ -29,7 +29,7 @@ object ClusterServiceAppFixture extends App {
   ClusterService.run()
   remote.actorFor("test-service", "localhost", 1234) ! "Ready"
   ClusterService.keepAlive.await
-  System.exit(0)
+  sys.exit()
 }
 
 class TestDataInput extends AbstractDataInput[Int, Int] {
