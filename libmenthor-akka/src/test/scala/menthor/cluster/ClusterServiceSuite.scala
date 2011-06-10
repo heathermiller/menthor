@@ -107,7 +107,9 @@ class ClusterServiceSuite extends FixtureFunSuite {
     }
     info("creating worker")
     val worker: ActorRef = foreman !! CreateWorkers(1) match {
-      case Some(WorkersCreated(List(workerRef))) => workerRef
+      case Some(WorkersCreated(workers)) =>
+        assert(workers.size == 1)
+        workers.head
       case x => invalidResponse("foreman", "creating worker", x)
     }
     info("creating vertices")

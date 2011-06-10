@@ -33,8 +33,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     implicit val vidmanifest = source.vidmanifest
 
     val subgraph = source.vertices(self)
-    val knownVertices = mutable.Map.empty[source.VertexID, VertexRef]
-    val unknownVertices = mutable.Set.empty[source.VertexID]
+    var knownVertices = Map.empty[source.VertexID, VertexRef]
+    var unknownVertices = Set.empty[source.VertexID]
     for ((vid, neighbors) <- subgraph) {
       val vertex = source.createVertex(vid)
       vertices += (vertex.ref.uuid -> vertex)
@@ -43,39 +43,43 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     }
     unknownVertices --= knownVertices.keys
 
-    var channel: Option[Channel[Any]] = None
+    become(share(source.owner _, knownVertices, unknownVertices, subgraph))
+  }
 
-    def share: Actor.Receive = {
-      case ShareVertices =>
-        if (unknownVertices.isEmpty)
-          self.channel ! VerticesShared
-        else {
-          channel = Some(self.channel)
-          for (vid <- unknownVertices)
-            source.owner(vid) ! RequestVertexRef(vid)
-        }
-      case msg @ VertexRefForID(_vid, vUuid, wUuid) if msg.manifest == manifest[source.VertexID] =>
-        val vid = _vid.asInstanceOf[source.VertexID]
-        val workerRef = Actor.registry.actorFor(wUuid) orElse self.sender
+  def share[VertexID: Manifest, Data](
+    owner: VertexID => ActorRef,
+    known: Map[VertexID, VertexRef],
+    unknown: Set[VertexID],
+    subgraph: Map[VertexID, Iterable[VertexID]],
+    controlChannel: Option[Channel[Any]] = None
+  ): Actor.Receive = {
+    case ShareVertices =>
+      if (unknown.isEmpty)
+        self.channel ! VerticesShared
+      else {
+        become(share(owner, known, unknown, subgraph, Some(self.channel)))
+        for (vid <- unknown)
+          owner(vid) ! RequestVertexRef(vid)
+      }
+    case msg @ VertexRefForID(_vid, vUuid, wUuid) if msg.manifest == manifest[VertexID] =>
+      val vid = _vid.asInstanceOf[VertexID]
+      val workerRef = Actor.registry.actorFor(wUuid) orElse self.sender
+      become(share(owner, known + (vid -> new VertexRef(Some(vUuid),
+        workerRef)), unknown - vid, subgraph, controlChannel))
 
-        knownVertices += (vid -> new VertexRef(Some(vUuid), workerRef))
-        unknownVertices -= vid
-
-        if (unknownVertices.isEmpty && channel.isDefined)
-          channel.get ! VerticesShared
-      case msg @ RequestVertexRef(_vid) if msg.manifest == manifest[source.VertexID] =>
-        val vid = _vid.asInstanceOf[source.VertexID]
-        self.channel ! VertexRefForID(vid, knownVertices(vid).uuid, self.uuid)
-      case SetupDone =>
-        for ((vid, neighbors) <- subgraph) {
-          val vertex = vertices(knownVertices(vid).uuid)
-          for (nid <- neighbors)
-            vertex.connectTo(knownVertices(nid))
-        }
-        become(processing)
-        parent ! SetupDone
-    }
-    become(share)
+      if ((unknown - vid).isEmpty && controlChannel.isDefined)
+        controlChannel.get ! VerticesShared
+    case msg @ RequestVertexRef(_vid) if msg.manifest == manifest[VertexID] =>
+      val vid = _vid.asInstanceOf[VertexID]
+      self.channel ! VertexRefForID(vid, known(vid).uuid, self.uuid)
+    case SetupDone =>
+      for ((vid, neighbors) <- subgraph) {
+        val vertex = vertices(known(vid).uuid)
+        for (nid <- neighbors)
+          vertex.connectTo(known(nid))
+      }
+      become(processing)
+      parent ! SetupDone
   }
 
   def processing: Actor.Receive = {
