@@ -38,12 +38,14 @@ case class Crunch[Data](cruncher: (Data, Data) => Data, result: Data) extends Cr
 
 case class CrunchResult[Data](result: Data) extends CrunchMessage
 
+sealed abstract class DataMessage
+
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,
   implicit val step: Superstep
-)
+) extends DataMessage
 
-case class TransmitMessage[Data](dest: Uuid, value: Data, source: Uuid, step: Superstep)
+case class TransmitMessage[Data](dest: Uuid, value: Data, source: Uuid, step: Superstep) extends DataMessage
 
 sealed abstract class SetupMessage extends Serializable
 

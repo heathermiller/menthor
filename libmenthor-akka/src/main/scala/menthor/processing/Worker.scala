@@ -1,8 +1,10 @@
 package menthor.processing
 
 import menthor.datainput.DataInput
+import Crunch.reduceCrunch
 
-import akka.actor.{Actor, ActorRef, Channel, Uuid}
+import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid}
+import collection.mutable
 
 object Worker {
   val vertexCreator = new ThreadLocal[Option[Worker[_]]] {
@@ -19,11 +21,15 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
   private var _superstep: Superstep = 0
 
+  private val mailbox = new mutable.HashMap[Uuid, List[Message[Data]]] {
+    override def default(v: Uuid) = Nil
+  }
+
   def totalNumVertices = _totalNumVertices
 
   def superstep: Superstep = _superstep
 
-  def incoming(vUuid: Uuid) = Nil
+  def incoming(vUuid: Uuid) = mailbox(vUuid)
 
   def voteToHalt(vUuid: Uuid) { carryOn - vUuid }
 
@@ -93,6 +99,83 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   }
 
   def processing: Actor.Receive = {
-    case _ =>
+    case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
+      val msg = _msg.asInstanceOf[Message[Data]]
+      mailbox(dest.uuid) = msg :: mailbox(dest.uuid)
+    case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) => {
+      assert(self.sender.isDefined)
+      val value = _value.asInstanceOf[Data]
+      val msg = Message(vertices(dest).ref, value)(new VertexRef(Some(source), Some(self.sender.get)), step)
+      mailbox(dest) = msg :: mailbox(dest)
+    }
+    case Stop =>
+      // Data Output
+    case Next =>
+      nextstep()
+  }
+
+  def crunchResult: Actor.Receive = {
+    case CrunchResult(_result) =>
+      val result = _result.asInstanceOf[Data]
+      for ((uuid, vertex) <- vertices) {
+        val msg = Message(vertex.ref, result)(null, superstep)
+        mailbox(uuid) = msg :: mailbox(uuid)
+      }
+      unbecome()
+      nextstep()
+  }
+
+  private def nextstep() {
+    _superstep += 1
+
+    var crunchsteps: List[CrunchStep[Data]] = Nil
+    var substeps: List[Substep[Data]] = Nil
+
+    for (vertex <- vertices.values) vertex.currentStep match {
+      case crunchstep: CrunchStep[_] =>
+        crunchsteps = crunchstep.asInstanceOf[CrunchStep[Data]] :: crunchsteps
+      case substep: Substep[_] =>
+        substeps = substep.asInstanceOf[Substep[Data]] :: substeps
+    }
+    if (crunchsteps.nonEmpty && substeps.nonEmpty) {
+      throw new IllegalStateException("Vertices mix crunches and substeps in the same step")
+    } else if (crunchsteps.nonEmpty) {
+      val cruncher = crunchsteps.head.cruncher
+      for (step <- crunchsteps.tail)
+        assert(step.cruncher == cruncher)
+
+      val result = vertices.values.map(_.value) reduceLeft cruncher
+      become(crunchResult)
+      parent ! Crunch(cruncher, result)
+    } else if (substeps.nonEmpty) {
+      val validStep = substeps forall { substep =>
+        ! (substep.cond.isDefined && substep.cond.get())
+      }
+      if (validStep) {
+        carryOn = vertices.keySet
+        var outgoing: List[Message[Data]] = Nil
+
+        for (substep <- substeps)
+          outgoing ::: substep.stepfun()
+
+        mailbox.clear()
+
+        for (msg <- outgoing) msg.dest.worker match {
+          case w if (w == self) =>
+            mailbox(msg.dest.uuid) = msg :: mailbox(msg.dest.uuid)
+          case w: LocalActorRef =>
+            w ! msg
+          case w: ActorRef =>
+            w ! TransmitMessage(msg.dest.uuid, msg.value, msg.source.uuid, msg.step)
+        }
+        val status = if (carryOn.isEmpty) Halt else Done
+        parent ! status
+      } else {
+        for (vertex <- vertices.values)
+          vertex.moveToNextStep()
+        _superstep -= 1
+        nextstep()
+      }
+    }
   }
 }
