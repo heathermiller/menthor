@@ -1,6 +1,6 @@
 package menthor.processing
 
-import menthor.io.{DataInput, DataOutput}
+import menthor.io.DataIO
 
 import akka.actor.Uuid
 
@@ -29,8 +29,13 @@ sealed abstract class CrunchMessage extends InternalMessage
 
 object Crunch {
   def reduceCrunch[Data](crunch1: Crunch[Data], crunch2: Crunch[Data]) = {
-    assert(crunch1.cruncher == crunch2.cruncher)
-    Crunch(crunch1.cruncher, crunch1.cruncher(crunch1.result, crunch2.result))
+    if (crunch1.cruncher(crunch1.result, crunch2.result) != crunch2.cruncher(crunch1.result, crunch2.result))
+      throw new InvalidStepException("Different crunchers are used in the same step")
+    try {
+      Crunch(crunch1.cruncher, crunch1.cruncher(crunch1.result, crunch2.result))
+    } catch {
+      case e => throw new ProcessingException("Cruncher application error", e)
+    }
   }
 }
 
@@ -51,15 +56,15 @@ sealed abstract class SetupMessage extends Serializable
 
 case object SetupDone extends SetupMessage
 
-class CreateVertices[Data](val source: DataInput[Data])(
+class CreateVertices[Data](val source: DataIO[Data])(
   implicit val manifest: Manifest[Data]
 ) extends SetupMessage
 
 object CreateVertices {
-  def apply[Data: Manifest](source: DataInput[Data]) =
+  def apply[Data: Manifest](source: DataIO[Data]) =
     new CreateVertices(source)
 
-  def unapply[Data: Manifest](msg: CreateVertices[_]): Option[DataInput[Data]] = {
+  def unapply[Data: Manifest](msg: CreateVertices[_]): Option[DataIO[Data]] = {
     if ((msg eq null) || (msg.manifest != manifest[Data])) None
     else Some(msg.asInstanceOf[CreateVertices[Data]].source)
   }
@@ -78,17 +83,3 @@ case class RequestVertexRef[VertexID](vid: VertexID)(
 case class VertexRefForID[VertexID](vid: VertexID, vertexUuid: Uuid, workerUuid: Uuid)(
   implicit val manifest: Manifest[VertexID]
 ) extends SetupMessage
-
-class ProcessResults[Data](val output: DataOutput[Data])(
-  implicit val manifest: Manifest[Data]
-) extends SetupMessage
-
-object ProcessResults {
-  def apply[Data: Manifest](output: DataOutput[Data]) =
-    new ProcessResults(output)
-
-  def unapply[Data: Manifest](msg: ProcessResults[_]): Option[DataOutput[Data]] = {
-    if ((msg eq null) || (msg.manifest != manifest[Data])) None
-    else Some(msg.asInstanceOf[ProcessResults[Data]].output)
-  }
-}

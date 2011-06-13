@@ -8,6 +8,7 @@ object WorkerModifier extends Enumeration {
   val Absolute = Value
   val Times = Value
   val Plus = Value
+  val Minus = Value
 }
 
 class ConfigParser extends RegexParsers {
@@ -17,7 +18,7 @@ class ConfigParser extends RegexParsers {
   val ipToken: Parser[String] = """[0-9a-fA-F:.]+""".r
   val hostnameToken: Parser[String] = """[-A-Za-z0-9.]+""".r
   val portToken: Parser[String] = """\d+""".r
-  val workerModToken: Parser[String] = """[+*]?""".r
+  val workerModToken: Parser[String] = """[-+*]?""".r
   val workerToken: Parser[String] = """\d+""".r
 
   def hostname = "[" ~> (ipToken ||| hostnameToken) <~ "]"
@@ -27,8 +28,9 @@ class ConfigParser extends RegexParsers {
   }
 
   def workerMod = (workerModToken ?) ^? {
-    case Some("+") => WorkerModifier.Plus
     case Some("*") => WorkerModifier.Times
+    case Some("+") => WorkerModifier.Plus
+    case Some("-") => WorkerModifier.Minus
     case None => WorkerModifier.Absolute
   }
 
@@ -36,6 +38,8 @@ class ConfigParser extends RegexParsers {
     workerToken ^^ { result =>
       result.toInt
     }
+  } ^? {
+    case ~(mod, count) => (mod, count)
   }
 
   def config = entry *

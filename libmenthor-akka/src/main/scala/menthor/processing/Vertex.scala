@@ -36,11 +36,11 @@ trait Vertex[Data] {
   protected implicit final def mkSubstep(block: => List[Message[Data]]): Step[Data] =
     new Substep(block _)
 
-  protected final def until(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] =
-    new Substep(block _, None, Some(cond _))
+//  protected final def until(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] =
+//    new Substep(block _, None, Some(cond _))
 
-  protected final def crunch(fun: (Data, Data) => Data): Step[Data] =
-    new CrunchStep(fun)
+//  protected final def crunch(fun: (Data, Data) => Data): Step[Data] =
+//    new CrunchStep(fun)
 
   protected def update(): Step[Data]
 

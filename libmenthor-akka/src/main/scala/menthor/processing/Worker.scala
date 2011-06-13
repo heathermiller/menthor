@@ -1,9 +1,15 @@
 package menthor.processing
 
-import menthor.io.{DataInput, DataOutput}
+import menthor.MenthorException
+import menthor.io.DataIO
 
-import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid}
+import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid, Unlink}
+import akka.config.Supervision.Temporary
+import akka.event.EventHandler
+
 import collection.mutable
+
+class VerticesInitializationException private[menthor](message: String, cause: Throwable = null) extends MenthorException(message, cause)
 
 object Worker {
   val vertexCreator = new ThreadLocal[Option[Worker[_]]] {
@@ -12,6 +18,8 @@ object Worker {
 }
 
 class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
+  val lifeCycle = Temporary
+
   private var vertices = Map.empty[Uuid, Vertex[Data]]
 
   private var carryOn = Set.empty[Uuid]
@@ -19,6 +27,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   private var _totalNumVertices: Int = 0
 
   private var _superstep: Superstep = 0
+  
+  private var output: DataIO[Data] = null
 
   private val mailbox = new mutable.HashMap[Uuid, List[Message[Data]]] {
     override def default(v: Uuid) = Nil
@@ -30,35 +40,40 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
   def incoming(vUuid: Uuid) = mailbox(vUuid)
 
-  def voteToHalt(vUuid: Uuid) { carryOn - vUuid }
+  def voteToHalt(vUuid: Uuid) { carryOn -= vUuid }
 
   def receive = {
-    case CreateVertices(source) =>
-      Worker.vertexCreator.get match {
-        case Some(_) => throw new IllegalStateException("A worker is already creating vertices")
-        case None => Worker.vertexCreator.set(Some(this))
+    case CreateVertices(dataIO) =>
+      assert(Worker.vertexCreator.get.isEmpty)
+      Worker.vertexCreator.set(Some(this))
+      try {
+        createVertices(dataIO)
+      } catch {
+        case e => throw new VerticesInitializationException(
+          "DataIO module failed to create the vertices", e
+        )
       }
-      createVertices(source)
       Worker.vertexCreator.remove()
       self.channel ! VerticesCreated
   }
 
-  def createVertices(source: DataInput[Data]) {
-    implicit val vidmanifest = source.vidmanifest
+  def createVertices(dataIO: DataIO[Data]) {
+    implicit val vidmanifest = dataIO.vidmanifest
 
-    _totalNumVertices = source.numVertices
-    val subgraph = source.vertices(self)
-    var knownVertices = Map.empty[source.VertexID, VertexRef]
-    var unknownVertices = Set.empty[source.VertexID]
+    _totalNumVertices = dataIO.numVertices
+    val subgraph = dataIO.vertices(self.uuid)
+    var knownVertices = Map.empty[dataIO.VertexID, VertexRef]
+    var unknownVertices = Set.empty[dataIO.VertexID]
     for ((vid, neighbors) <- subgraph) {
-      val vertex = source.createVertex(vid)
+      val vertex = dataIO.createVertex(vid)
       vertices += (vertex.ref.uuid -> vertex)
       knownVertices += (vid -> vertex.ref)
       unknownVertices ++= neighbors
     }
     unknownVertices --= knownVertices.keys
 
-    become(share(source.owner _, knownVertices, unknownVertices, subgraph))
+    output = dataIO
+    become(share(dataIO.owner, knownVertices, unknownVertices, subgraph))
   }
 
   def share[VertexID: Manifest, Data](
@@ -74,7 +89,13 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       else {
         become(share(owner, known, unknown, subgraph, Some(self.channel)))
         for (vid <- unknown)
-          owner(vid) ! RequestVertexRef(vid)
+          try {
+            owner(vid) ! RequestVertexRef(vid)
+          } catch {
+            case e => throw new VerticesInitializationException(
+              "Failed to send a request for the VertexRef of vertex [" + vid +"]", e
+            )
+          }
       }
     case msg @ VertexRefForID(_vid, vUuid, wUuid) if msg.manifest == manifest[VertexID] =>
       val vid = _vid.asInstanceOf[VertexID]
@@ -101,14 +122,15 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
       val msg = _msg.asInstanceOf[Message[Data]]
       mailbox(dest.uuid) = msg :: mailbox(dest.uuid)
-    case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) => {
+    case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) =>
       assert(self.sender.isDefined)
       val value = _value.asInstanceOf[Data]
       val msg = Message(vertices(dest).ref, value)(new VertexRef(Some(source), Some(self.sender.get)), step)
       mailbox(dest) = msg :: mailbox(dest)
-    }
     case Stop =>
-      become(processResults)
+      EventHandler.info(this, "Processing results")
+      output.processVertices(self.uuid, vertices.values)
+      self.stop()
     case Next =>
       nextstep()
   }
@@ -137,15 +159,20 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         substeps = substep.asInstanceOf[Substep[Data]] :: substeps
     }
     if (crunchsteps.nonEmpty && substeps.nonEmpty) {
-      throw new IllegalStateException("Vertices mix crunches and substeps in the same step")
+      throw new InvalidStepException("Mixing crunches and substeps at step [" + superstep + "]")
     } else if (crunchsteps.nonEmpty) {
       val cruncher = crunchsteps.head.cruncher
       for (step <- crunchsteps.tail)
-        assert(step.cruncher == cruncher)
+        if (step.cruncher != cruncher)
+          throw new InvalidStepException("Different crunchers are used at step [" + superstep + "]")
 
-      val result = vertices.values.map(_.value) reduceLeft cruncher
-      become(crunchResult)
-      parent ! Crunch(cruncher, result)
+      try {
+        val result = vertices.values.map(_.value) reduceLeft cruncher
+        parent ! Crunch(cruncher, result)
+      } catch {
+        case e => throw new ProcessingException("Cruncher application error at step [" + superstep + "]", e)
+      }
+      become(crunchResult, false)
     } else if (substeps.nonEmpty) {
       val validStep = substeps forall { substep =>
         ! (substep.cond.isDefined && substep.cond.get())
@@ -154,8 +181,12 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         carryOn = vertices.keySet
         var outgoing: List[Message[Data]] = Nil
 
-        for (substep <- substeps)
-          outgoing ::: substep.stepfun()
+        try {
+          for (substep <- substeps)
+            outgoing ::: substep.stepfun()
+        } catch {
+          case e => throw new ProcessingException("Substep execution error at step [" + superstep + "]", e)
+        }
 
         mailbox.clear()
 
@@ -176,11 +207,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         nextstep()
       }
     }
-  }
-
-  def processResults: Actor.Receive = {
-    case ProcessResults(output) =>
-      output.process(vertices.values)
-      self.stop()
+    for (vertex <- vertices.values)
+      vertex.moveToNextStep()
   }
 }

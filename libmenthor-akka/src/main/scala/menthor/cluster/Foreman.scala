@@ -1,41 +1,51 @@
 package menthor.cluster
 
-import menthor.processing.Worker
+import menthor.processing.{ Worker, InvalidStepException }
 import menthor.processing.{ Stop, Next, WorkerStatusMessage, Done, Halt, Crunch, CrunchResult, SetupDone }
 import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
-import akka.actor.{Actor, ActorRef}
+import akka.actor.{Actor, ActorRef, UnlinkAndStop}
 import collection.mutable.ListBuffer
 
 class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
+  var children = Set.empty[ActorRef]
+
+  override def postStop() {
+    if (self.supervisor.isDefined)
+      self.supervisor.get ! UnlinkAndStop(self)
+  }
+
   def receive = {
     case CreateWorkers(count) =>
       if (count == 0) {
-        become(fromGraph(Set.empty))
+        become(fromGraph)
         parent ! SetupDone
       } else {
-        var children = Set.empty[ActorRef]
-        for (i <- 1 to count)
-          children += Actor.actorOf(new Worker[Data](self)).start()
-        become(setup(children, children))
+        children = List.fill(count)(Actor.actorOf(new Worker[Data](self)).start()).toSet
+        if (self.supervisor.isDefined) {
+          val supervisor = self.supervisor.get
+          for (child <- children)
+            supervisor.link(child)
+        }
+        become(setup(children))
         self.channel ! WorkersCreated(children)
       }
   }
 
-  def setup(children: Set[ActorRef], remaining: Set[ActorRef]): Actor.Receive = {
+  def setup(remaining: Set[ActorRef]): Actor.Receive = {
     case SetupDone =>
       assert(self.sender.isDefined && remaining.nonEmpty)
       val worker = self.sender.get
       assert(remaining contains worker)
 
       if ((remaining - worker) isEmpty) {
-        become(fromGraph(children))
+        become(fromGraph)
         parent ! SetupDone
-      } else become(setup(children, remaining - worker))
+      } else become(setup(remaining - worker))
   }
 
-  def fromGraph(children: Set[ActorRef]): Actor.Receive = {
+  def fromGraph: Actor.Receive = {
     case Stop =>
       for (child <- children)
         child ! Stop
@@ -44,10 +54,10 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       for (child <- children)
         child ! msg
       if (children.nonEmpty)
-        become(processing(children), false)
+        become(processing, false)
     }
 
-  def processing(children: Set[ActorRef]): Actor.Receive = {
+  def processing: Actor.Receive = {
     case msg: WorkerStatusMessage =>
       assert(self.sender.isDefined)
       val worker = self.sender.get
@@ -56,7 +66,7 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       if ((children - worker) isEmpty) {
         unbecome()
         parent ! msg
-      } else become(stepStatus(children, children - worker, msg))
+      } else become(stepStatus(children - worker, msg))
     case _crunch: Crunch[_] =>
       assert(self.sender.isDefined)
       val worker = self.sender.get
@@ -66,10 +76,10 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       if ((children - worker) isEmpty) {
         unbecome()
         parent ! crunch
-      } else become(crunching(children, children - worker, crunch))
+      } else become(crunching(children - worker, crunch))
   }
 
-  def stepStatus(children: Set[ActorRef], remaining: Set[ActorRef], status: WorkerStatusMessage): Actor.Receive = {
+  def stepStatus(remaining: Set[ActorRef], status: WorkerStatusMessage): Actor.Receive = {
     case msg: WorkerStatusMessage =>
       assert(self.sender.isDefined && remaining.nonEmpty)
       val worker = self.sender.get
@@ -79,10 +89,12 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       if ((remaining - worker) isEmpty) {
         unbecome()
         parent ! _status
-      } else become(stepStatus(children, remaining - worker, _status))
+      } else become(stepStatus(remaining - worker, _status))
+    case _: Crunch[_] =>
+      throw new InvalidStepException("Mixing crunches and substeps in the same step")
   }
 
-  def crunching(children: Set[ActorRef], remaining: Set[ActorRef], crunch1: Crunch[Data]): Actor.Receive = {
+  def crunching(remaining: Set[ActorRef], crunch1: Crunch[Data]): Actor.Receive = {
     case _crunch2: Crunch[_] =>
       assert(self.sender.isDefined && remaining.nonEmpty)
       val worker = self.sender.get
@@ -93,6 +105,8 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       if ((remaining - worker) isEmpty) {
         unbecome()
         parent ! crunch
-      } else become(crunching(children, remaining - worker, crunch))
+      } else become(crunching(remaining - worker, crunch))
+    case _: WorkerStatusMessage =>
+      throw new InvalidStepException("Mixing crunches and substeps in the same step")
   }
 }
