@@ -7,7 +7,7 @@ import akka.actor.{Actor, ActorRef, Uuid, UnlinkAndStop}
 import akka.event.EventHandler
 
 class Graph[Data](val childrenCount: Int) extends Actor {
-  var children = Set.empty[ActorRef]
+  var children = Map.empty[ActorRef, Set[Uuid]]
 
   override def postStop() {
     if (self.supervisor.isDefined)
@@ -15,13 +15,13 @@ class Graph[Data](val childrenCount: Int) extends Actor {
   }
 
   def receive = {
-    case SetupDone =>
+    case SetupDone(workers) =>
       assert(self.sender.isDefined)
-      children += self.sender.get
+      children += (self.sender.get -> workers)
       if (childrenCount == children.size) {
         become(processing)
-        for (child <- children)
-          child ! Next
+        for ((child, _) <- children)
+          child ! Next(Map.empty)
       }
   }
 
@@ -31,14 +31,14 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (childrenCount > 1) become(stepStatus(childrenCount - 1, msg), false)
       else msg match {
-        case Halt =>
+        case Halt(info) =>
           EventHandler.debug(this, "Computation complete")
-          for (child <- children)
-            child ! Stop
+          for ((child, uuids) <- children)
+            child ! Stop(info.filterKeys(uuids contains _))
           self.stop()
-        case Done =>
-          for (child <- children)
-            child ! Next
+        case Done(info) =>
+          for ((child, uuids) <- children)
+            child ! Next(info.filterKeys(uuids contains _))
       }
     case _crunch: Crunch[_] =>
       assert(self.sender.isDefined)
@@ -46,7 +46,7 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (childrenCount > 1) become(crunching(childrenCount - 1, crunch), false)
       else {
-        for (child <- children)
+        for (child <- children.keys)
           child ! CrunchResult(crunch.result)
       }
   }
@@ -58,15 +58,15 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (remaining > 1) become(stepStatus(remaining - 1, _status))
       else _status match {
-        case Halt =>
+        case Halt(info) =>
           EventHandler.debug(this, "Computation complete")
-          for (child <- children)
-            child ! Stop
+          for ((child, uuids) <- children)
+            child ! Stop(info.filterKeys(uuids contains _))
           self.stop()
-        case Done =>
+        case Done(info) =>
           unbecome()
-          for (child <- children)
-            child ! Next
+          for ((child, uuids) <- children)
+            child ! Next(info.filterKeys(uuids contains _))
       }
     case _: Crunch[_] =>
       throw new InvalidStepException("Mixing crunches and substeps in the same step")
@@ -81,7 +81,7 @@ class Graph[Data](val childrenCount: Int) extends Actor {
       if (remaining > 1) become(crunching(remaining - 1, crunch))
       else {
         unbecome()
-        for (child <- children)
+        for (child <- children.keys)
           child ! CrunchResult(crunch.result)
       }
     case _: WorkerStatusMessage =>

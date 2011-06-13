@@ -49,18 +49,18 @@ case class CreateWorkers(count: Int) extends ClusterServiceMessage
 
 object WorkersCreated {
   def apply(workers: Iterable[ActorRef]) = new WorkersCreated(workers)
-  def unapply(msg: WorkersCreated): Option[Map[Uuid, ActorRef]] = Some(msg.wrefs.mapValues(_.actor))
+  def unapply(msg: WorkersCreated): Option[Map[Uuid, ActorRef]] = Some(Map(msg.wrefs: _*).mapValues(_.actor))
 }
 
 class WorkersCreated(workers: Iterable[ActorRef]) extends ClusterServiceMessage {
-  val wrefs: Map[Uuid, RemoteActorRefData] = workers.map(w => (w.uuid -> new RemoteActorRefData(w))).toMap
+  val wrefs: Array[(Uuid, RemoteActorRefData)] = workers.map(w => (w.uuid -> new RemoteActorRefData(w))).toArray
 }
 
 object GraphSupervisors {
   def apply(supervisors: Map[Uuid, ActorRef]) = new GraphSupervisors(supervisors)
-  def unapply(msg: GraphSupervisors): Option[Iterable[ActorRef]] = Some(msg.srefs.map(_.actor))
+  def unapply(msg: GraphSupervisors): Option[Iterable[ActorRef]] = Some(List(msg.srefs: _*).map(_.actor))
 }
 
 class GraphSupervisors(supervisors: Map[Uuid, ActorRef]) extends ClusterServiceMessage {
-  val srefs: List[RemoteActorRefData] = supervisors.map(pair => new RemoteActorRefData(pair._2, pair._1)).toList
+  val srefs: Array[RemoteActorRefData] = supervisors.map(pair => new RemoteActorRefData(pair._2, pair._1)).toArray
 }

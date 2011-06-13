@@ -10,6 +10,7 @@ import menthor.io.DataIO
 import akka.actor.{Actor, ActorRef, Uuid}
 import akka.agent.Agent
 import akka.dispatch.Future
+import akka.event.EventHandler
 import akka.remote.{RemoteServerSettings, RemoteClientSettings}
 
 import java.util.concurrent.CountDownLatch
@@ -36,6 +37,7 @@ class GraphMaster[Data: Manifest](val dataIO: DataIO[Data], _conf: Option[Config
     case VerticesShared =>
       if (remaining > 1) become(verticesSharing(remaining - 1))
       else {
+        EventHandler.debug(this, "Graph setup complete")
         val workers = topology._2.flatMap(_.values)
         unbecome()
         for (worker <- workers)

@@ -5,7 +5,6 @@ import menthor.io.DataIO
 
 import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid, Unlink}
 import akka.config.Supervision.Temporary
-import akka.event.EventHandler
 
 import collection.mutable
 
@@ -61,7 +60,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     implicit val vidmanifest = dataIO.vidmanifest
 
     _totalNumVertices = dataIO.numVertices
-    val subgraph = dataIO.vertices(self.uuid)
+    val subgraph = Map(dataIO.vertices(self.uuid).toSeq: _*)
     var knownVertices = Map.empty[dataIO.VertexID, VertexRef]
     var unknownVertices = Set.empty[dataIO.VertexID]
     for ((vid, neighbors) <- subgraph) {
@@ -98,10 +97,12 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           }
       }
     case msg @ VertexRefForID(_vid, vUuid, wUuid) if msg.manifest == manifest[VertexID] =>
+      assert(self.sender.isDefined)
       val vid = _vid.asInstanceOf[VertexID]
-      val workerRef = Actor.registry.actorFor(wUuid) orElse self.sender
-      become(share(owner, known + (vid -> new VertexRef(Some(vUuid),
-        workerRef)), unknown - vid, subgraph, controlChannel))
+      val workerRef = Actor.registry.actorFor(wUuid) getOrElse self.sender.get
+      val vref = new VertexRef(vUuid, wUuid, workerRef)
+      become(share(owner, known + (vid -> vref), unknown - vid, subgraph,
+        controlChannel))
 
       if ((unknown - vid).isEmpty && controlChannel.isDefined)
         controlChannel.get ! VerticesShared
@@ -114,25 +115,50 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         for (nid <- neighbors)
           vertex.connectTo(known(nid))
       }
-      become(processing)
-      parent ! SetupDone
+      become(processing(0))
+      parent ! SetupDone(Set(self.uuid))
   }
 
-  def processing: Actor.Receive = {
+  def processing(remaining: Int): Actor.Receive = {
     case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
       val msg = _msg.asInstanceOf[Message[Data]]
       mailbox(dest.uuid) = msg :: mailbox(dest.uuid)
+
+      if (remaining - 1 == 0) {
+        become(processing(0))
+        nextstep()
+      } else become(processing(remaining - 1))
     case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) =>
       assert(self.sender.isDefined)
       val value = _value.asInstanceOf[Data]
-      val msg = Message(vertices(dest).ref, value)(new VertexRef(source, self.sender.get), step)
+      val msg = Message(vertices(dest).ref, value)(new VertexRef(source._1, source._2, self.sender.get), step)
       mailbox(dest) = msg :: mailbox(dest)
-    case Stop =>
-      EventHandler.info(this, "Processing results")
+
+      if (remaining - 1 == 0) {
+        nextstep()
+        become(processing(0))
+      }
+      else become(processing(remaining - 1))
+    case Stop(info) =>
       output.processVertices(self.uuid, vertices.values)
-      self.stop()
-    case Next =>
-      nextstep()
+      mailbox.clear
+
+      val rem = remaining + info.getOrElse(self.uuid, 0)
+      if (rem == 0) self.stop()
+      else become(dropMessages(rem))
+    case Next(info) =>
+      val rem = remaining + info.getOrElse(self.uuid, 0)
+      if (rem == 0) nextstep()
+      else become(processing(rem))
+  }
+
+  def dropMessages(remaining: Int): Actor.Receive = {
+    case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
+      if (remaining - 1 == 0) self.stop()
+      else become(dropMessages(remaining - 1))
+    case TransmitMessage(dest, _, _, step) if ((step == superstep) && (vertices contains dest)) =>
+      if (remaining - 1 == 0) self.stop()
+      else become(dropMessages(remaining - 1))
   }
 
   def crunchResult: Actor.Receive = {
@@ -144,7 +170,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       }
       for (vertex <- vertices.values)
         vertex.moveToNextStep()
-      unbecome()
+      become(processing(0))
       nextstep()
   }
 
@@ -164,6 +190,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     if (crunchsteps.nonEmpty && substeps.nonEmpty) {
       throw new InvalidStepException("Mixing crunches and substeps at step [" + superstep + "]")
     } else if (crunchsteps.nonEmpty) {
+      become(crunchResult)
       val cruncher = crunchsteps.head.cruncher
       try {
         val result = vertices.values.map(_.value) reduceLeft cruncher
@@ -171,16 +198,15 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       } catch {
         case e => throw new ProcessingException("Cruncher application error at step [" + superstep + "]", e)
       }
-      become(crunchResult, false)
     } else if (substeps.nonEmpty) {
+      become(processing(0))
       val validStep = substeps forall { substep =>
         ! (substep.cond.isDefined && substep.cond.get())
       }
       if (validStep) {
-        carryOn = vertices.keySet
+        carryOn = Set(vertices.keys.toSeq: _*)
         var outgoing: List[Message[Data]] = Nil
 
-        EventHandler.debug(this, "[" + superstep + "] Received messages count [" + mailbox.values.map(_.size).toList + "]")
         try {
           for (substep <- substeps)
             outgoing = outgoing ::: substep.stepfun()
@@ -190,17 +216,19 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
         mailbox.clear()
 
+        val postInfo = Map(outgoing.groupBy(_.dest.wuuid).mapValues(_.size).toSeq: _*) - self.uuid
+
         for (msg <- outgoing) msg.dest.worker match {
           case w if (w == self) =>
             mailbox(msg.dest.uuid) = msg :: mailbox(msg.dest.uuid)
           case w: LocalActorRef =>
             w ! msg
           case w: ActorRef =>
-            w ! TransmitMessage(msg.dest.uuid, msg.value, msg.source.uuid, msg.step)
+            w ! TransmitMessage(msg.dest.uuid, msg.value, (msg.source.uuid, self.uuid), msg.step)
         }
         for (vertex <- vertices.values)
           vertex.moveToNextStep()
-        val status = if (carryOn.isEmpty) Halt else Done
+        val status = if (carryOn.isEmpty) Halt(postInfo) else Done(postInfo)
         parent ! status
       } else {
         for (vertex <- vertices.values)

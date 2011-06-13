@@ -4,26 +4,60 @@ import menthor.io.DataIO
 
 import akka.actor.Uuid
 
-sealed abstract class InternalMessage
+sealed abstract class InternalMessage extends Serializable
 
 sealed abstract class ControlMessage extends InternalMessage
 
-case object Stop extends ControlMessage
+object Stop {
+  def apply(postInfo: Map[Uuid,Int]) = new Stop(postInfo.toArray)
+  def unapply(msg: Stop): Option[Map[Uuid,Int]] =
+    if (msg eq null) None
+    else Some(Map(msg.postInfo: _*))
+}
 
-case object Next extends ControlMessage
+class Stop(val postInfo: Array[(Uuid,Int)]) extends ControlMessage
+
+object Next {
+  def apply(postInfo: Map[Uuid,Int]) = new Next(postInfo.toArray)
+  def unapply(msg: Next): Option[Map[Uuid,Int]] =
+    if (msg eq null) None
+    else Some(Map(msg.postInfo: _*))
+}
+
+class Next(val postInfo: Array[(Uuid,Int)]) extends ControlMessage
 
 object WorkerStatusMessage {
+  def aggregatePostInfo(i1: Array[(Uuid,Int)], i2: Array[(Uuid,Int)]) = {
+    (List(i1: _*) ::: List(i2: _*)).groupBy(_._1).mapValues(_.foldLeft(0)(_ + _._2)).toArray
+  }
+
   def reduceStatusMessage(ctrl1: WorkerStatusMessage, ctrl2: WorkerStatusMessage) = (ctrl1, ctrl2) match {
-    case (Done, _) | (_, Done) => Done
-    case (Halt, Halt) => Halt
+    case (d1: Done, d2: Done) => new Done(aggregatePostInfo(d1.postInfo, d2.postInfo))
+    case (d: Done, h: Halt) => new Done(aggregatePostInfo(d.postInfo,h.postInfo))
+    case (h: Halt, d: Done) => new Done(aggregatePostInfo(h.postInfo,d.postInfo))
+    case (h1: Halt, h2: Halt) => new Halt(aggregatePostInfo(h1.postInfo,h2.postInfo))
   }
 }
 
 sealed abstract class WorkerStatusMessage extends InternalMessage
 
-case object Done extends WorkerStatusMessage
+object Done {
+  def apply(postInfo: Map[Uuid,Int]) = new Done(postInfo.toArray)
+  def unapply(msg: Done): Option[Map[Uuid,Int]] =
+    if (msg eq null) None
+    else Some(Map(msg.postInfo: _*))
+}
 
-case object Halt extends WorkerStatusMessage
+class Done(val postInfo: Array[(Uuid,Int)]) extends WorkerStatusMessage
+
+object Halt {
+  def apply(postInfo: Map[Uuid,Int]) = new Halt(postInfo.toArray)
+  def unapply(msg: Halt): Option[Map[Uuid,Int]] =
+    if (msg eq null) None
+    else Some(Map(msg.postInfo: _*))
+}
+
+class Halt(val postInfo: Array[(Uuid,Int)]) extends WorkerStatusMessage
 
 sealed abstract class CrunchMessage extends InternalMessage
 
@@ -50,11 +84,18 @@ case class Message[Data](dest: VertexRef, value: Data)(
   implicit val step: Superstep
 ) extends DataMessage
 
-case class TransmitMessage[Data](dest: Uuid, value: Data, source: Uuid, step: Superstep) extends DataMessage
+case class TransmitMessage[Data](dest: Uuid, value: Data, source: (Uuid, Uuid), step: Superstep) extends DataMessage
 
 sealed abstract class SetupMessage extends Serializable
 
-case object SetupDone extends SetupMessage
+object SetupDone {
+  def apply(workers: Set[Uuid]) = new SetupDone(workers.toArray)
+  def unapply(msg: SetupDone): Option[Set[Uuid]] =
+    if (msg eq null) None
+    else Some(Set(msg.workers: _*))
+}
+
+class SetupDone(val workers: Array[Uuid]) extends SetupMessage
 
 class CreateVertices[Data](val source: DataIO[Data])(
   implicit val manifest: Manifest[Data]

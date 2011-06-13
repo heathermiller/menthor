@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch
 
 import akka.actor.{ Actor, ActorRef, Uuid }
 import akka.actor.Actor._
+import akka.remoteinterface._
 import akka.agent.Agent
 import akka.event.EventHandler
 import akka.remote.{ RemoteServerSettings => Settings }
@@ -20,6 +21,9 @@ import akka.remote.{ RemoteServerSettings => Settings }
 class ClusterServiceAppFixture
 
 object ClusterServiceAppFixture extends App {
+  val prop = new SystemProperties
+  prop += ("akka.mode" -> "debug")
+
   ClusterService.run(port = 2552 + util.Random.nextInt(1000))
   remote.actorFor("init-test-service", Settings.HOSTNAME, 1234) ! remote.address
   ClusterService.keepAlive.await
@@ -58,9 +62,9 @@ class TestVertex(val initialValue: Int) extends Vertex[Int] {
 }
 
 object TestConfig {
-  val verticesPerWorker = 2
-  val workersPerNode = 2
-  val clusterNodes = 2
+  val verticesPerWorker = 10
+  val workersPerNode = 4
+  val clusterNodes = 4
 }
 
 class TestDataIO extends AbstractDataIO[Int, Int] {

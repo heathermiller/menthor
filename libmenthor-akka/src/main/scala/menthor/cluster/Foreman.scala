@@ -18,43 +18,42 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
 
   def receive = {
     case CreateWorkers(count) =>
-      if (count == 0) {
-        become(fromGraph)
-        parent ! SetupDone
-      } else {
-        children = List.fill(count)(Actor.actorOf(new Worker[Data](self)).start()).toSet
-        if (self.supervisor.isDefined) {
-          val supervisor = self.supervisor.get
-          for (child <- children)
-            supervisor.link(child)
-        }
-        become(setup(children))
-        self.channel ! WorkersCreated(children)
+      assert(count != 0)
+      children = List.fill(count)(Actor.actorOf(new Worker[Data](self)).start()).toSet
+      if (self.supervisor.isDefined) {
+        val supervisor = self.supervisor.get
+        for (child <- children)
+          supervisor.link(child)
       }
+      become(setup(children))
+      self.channel ! WorkersCreated(children)
   }
 
   def setup(remaining: Set[ActorRef]): Actor.Receive = {
-    case SetupDone =>
+    case SetupDone(_) =>
       assert(self.sender.isDefined && remaining.nonEmpty)
       val worker = self.sender.get
       assert(remaining contains worker)
 
       if ((remaining - worker) isEmpty) {
         become(fromGraph)
-        parent ! SetupDone
+        parent ! SetupDone(children.map(_.uuid))
       } else become(setup(remaining - worker))
   }
 
   def fromGraph: Actor.Receive = {
-    case Stop =>
+    case Stop(info) =>
       for (child <- children)
-        child ! Stop
+        child ! Stop(info.filterKeys(_ == child.uuid))
       self.stop()
-    case msg @ (Next | _ : CrunchResult[_]) =>
+    case Next(info) =>
+      for (child <- children)
+        child ! Next(info.filterKeys(_ == child.uuid))
+      become(processing, false)
+    case msg @ CrunchResult(_) =>
       for (child <- children)
         child ! msg
-      if (children.nonEmpty)
-        become(processing, false)
+      become(processing, false)
     }
 
   def processing: Actor.Receive = {
