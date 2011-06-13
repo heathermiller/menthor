@@ -37,7 +37,6 @@ class Graph[Data](val childrenCount: Int) extends Actor {
             child ! Stop
           self.stop()
         case Done =>
-          EventHandler.debug(this, "Starting next superstep")
           for (child <- children)
             child ! Next
       }
@@ -65,7 +64,6 @@ class Graph[Data](val childrenCount: Int) extends Actor {
             child ! Stop
           self.stop()
         case Done =>
-          EventHandler.debug(this, "Starting next superstep")
           unbecome()
           for (child <- children)
             child ! Next
@@ -82,7 +80,6 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
       if (remaining > 1) become(crunching(remaining - 1, crunch))
       else {
-        EventHandler.debug(this, "Crunch complete")
         unbecome()
         for (child <- children)
           child ! CrunchResult(crunch.result)

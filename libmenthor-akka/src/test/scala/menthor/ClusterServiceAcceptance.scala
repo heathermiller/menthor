@@ -28,6 +28,7 @@ object ClusterServiceAppFixture extends App {
 
 class TestVertex(val initialValue: Int) extends Vertex[Int] {
   var success = false
+  var msg = ""
 
   var _neighbors: List[VertexRef] = Nil
 
@@ -37,36 +38,29 @@ class TestVertex(val initialValue: Int) extends Vertex[Int] {
 
   def neighbors = _neighbors
 
-  def update() = {
-    if (incoming.nonEmpty) {
-      EventHandler.debug(this, "Second step")
-      val vertices = (0 until numVertices).toSet
-      val values = incoming.map(_.value).toSet
-      success = values == vertices
-      voteToHalt
-    } else {
-      EventHandler.debug(this, "First step")
-      for (neighbor <- neighbors) yield Message(neighbor, value)
+  def update = process {
+    for (neighbor <- neighbors) yield Message(neighbor, value)
+  } then {
+    val vertices = (0 until numVertices).toSet
+    var values = incoming.map(_.value).toSet
+    success = values == vertices
+    Nil
+  } crunch(_ + _) then {
+    val sum = (0 until numVertices).sum
+    incoming match {
+      case List(result) =>
+        success = success && (sum == result.value)
+      case e =>
+        success = false
     }
+    voteToHalt
   }
+}
 
-//  def update() = {
-//    {
-//      for (neighbor <- neighbors) yield Message(neighbor, value)
-//    } then {
-//      val vertices = (0 until numVertices).toSet
-//      var values = incoming.map(_.value).toSet
-//      success = values == vertices
-//      Nil
-//    } crunch(_ + _) then {
-//      val sum = (0 until numVertices).sum
-//      incoming match {
-//        case List(result) => success = success && (sum != result.value)
-//        case _ => success = false
-//      }
-//      voteToHalt
-//    }
-//  }
+object TestConfig {
+  val verticesPerWorker = 2
+  val workersPerNode = 2
+  val clusterNodes = 2
 }
 
 class TestDataIO extends AbstractDataIO[Int, Int] {
@@ -75,16 +69,14 @@ class TestDataIO extends AbstractDataIO[Int, Int] {
 
   def partitionVertices(topology: List[List[Uuid]]) {
     workers = topology.flatten
-    val vids = (0 until workers.size).toList
-    for (vid <- vids) {
-      verticesPartitions += (workers(vid) -> Map(vid -> vids))
-    }
+    val vids = (0 until (workers.size * TestConfig.verticesPerWorker)).toList
+    verticesPartitions = (workers zip vids.map(_ -> vids).grouped(TestConfig.verticesPerWorker).toList.map(_.toMap)).toMap
   }
 
-  def numVertices = workers.size
+  def numVertices = workers.size * TestConfig.verticesPerWorker
   def vertices(worker: Uuid) = verticesPartitions(worker)
   def workerIO(worker: Uuid) = this
-  def ownerUuid(vid: Int) = workers(vid)
+  def ownerUuid(vid: Int) = workers(vid / TestConfig.verticesPerWorker)
   def createVertex(vid: Int) = new TestVertex(vid)
 
   def processVertices(worker: Uuid, vertices: Iterable[Vertex[Int]]) {
@@ -113,7 +105,7 @@ class ClusterServiceAcceptance extends FunSuite {
     val classPath = loader.getURLs.map(_.getPath).reduceLeft(_ + psep + _)
     val mainClass = classOf[ClusterServiceAppFixture].getCanonicalName
 
-    val servicesReady = new CountDownLatch(0)
+    val servicesReady = new CountDownLatch(TestConfig.clusterNodes)
     val servicesAddress: Agent[List[InetSocketAddress]] = Agent(Nil)
     remote.start(Settings.HOSTNAME, 1234)
     val initService = actorOf(new Actor {
@@ -125,7 +117,7 @@ class ClusterServiceAcceptance extends FunSuite {
     } )
     remote.register("init-test-service", initService)
     val logger = ProcessLogger((x: String) => println("ClusterService: " + x))
-    val processes = List.fill(0)(Process(path, Seq("-cp", classPath, mainClass)).run(logger))
+    val processes = List.fill(TestConfig.clusterNodes)(Process(path, Seq("-cp", classPath, mainClass)).run(logger))
 
     // Wait for the ready signal from the cluster service
     servicesReady.await
@@ -134,15 +126,15 @@ class ClusterServiceAcceptance extends FunSuite {
 
     val addresses = servicesAddress.await
     val conf = new Config {
-      override val localWorkers = 2
+      override val localWorkers = TestConfig.workersPerNode
       override val configuration = addresses.map { address =>
-        (address.getHostName, Some(address.getPort), Some((WorkerModifier.Absolute, 2)))
+        (address.getHostName, Some(address.getPort), Some((WorkerModifier.Absolute, TestConfig.workersPerNode)))
       }
     }
 
-    val nodeCount = if (conf.configuration.size != 0) conf.configuration.size else 1
+    val nodeCount = if (TestConfig.clusterNodes != 0) TestConfig.clusterNodes else 1
     val successful = Agent(true)
-    val finished = new CountDownLatch(nodeCount * 2)
+    val finished = new CountDownLatch(nodeCount * TestConfig.workersPerNode * TestConfig.verticesPerWorker)
     val endService = actorOf(new Actor {
       def receive = {
         case success: Boolean =>

@@ -26,15 +26,15 @@ trait Vertex[Data] {
 
   protected final def incoming: List[Message[Data]] = worker.incoming(ref.uuid)
 
-  private[processing] var currentStep: Step[Data] =
-    update().first
+  private[processing] var currentStep: Step[Data] = update.first
 
   private[processing] def moveToNextStep() {
     currentStep = currentStep.next getOrElse currentStep.first
   }
 
-  protected implicit final def mkSubstep(block: => List[Message[Data]]): Step[Data] =
-    new Substep(block _)
+  final def process(block: => List[Message[Data]]) = new Substep(block _)
+
+//  protected implicit final def mkSubstep(block: => List[Message[Data]]): Step[Data] = new Substep(() => block)
 
 //  protected final def until(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] =
 //    new Substep(block _, None, Some(cond _))
@@ -42,7 +42,7 @@ trait Vertex[Data] {
 //  protected final def crunch(fun: (Data, Data) => Data): Step[Data] =
 //    new CrunchStep(fun)
 
-  protected def update(): Step[Data]
+  protected def update: Step[Data]
 
   protected final def voteToHalt(): List[Message[Data]] = {
     worker.voteToHalt(ref.uuid)

@@ -5,6 +5,7 @@ import akka.util.HashCode
 
 class VertexRef(_uuid: Option[Uuid] = None, _worker: Option[ActorRef] = None)
 extends Comparable[VertexRef] with Equals with Serializable {
+  def this(_uuid: Uuid, _worker: ActorRef) = this(Some(_uuid), Some(_worker))
   val uuid = _uuid getOrElse newUuid
   val worker = _worker getOrElse {
     Worker.vertexCreator.get match {

@@ -125,7 +125,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) =>
       assert(self.sender.isDefined)
       val value = _value.asInstanceOf[Data]
-      val msg = Message(vertices(dest).ref, value)(new VertexRef(Some(source), Some(self.sender.get)), step)
+      val msg = Message(vertices(dest).ref, value)(new VertexRef(source, self.sender.get), step)
       mailbox(dest) = msg :: mailbox(dest)
     case Stop =>
       EventHandler.info(this, "Processing results")
@@ -142,12 +142,15 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         val msg = Message(vertex.ref, result)(null, superstep)
         mailbox(uuid) = msg :: mailbox(uuid)
       }
+      for (vertex <- vertices.values)
+        vertex.moveToNextStep()
       unbecome()
       nextstep()
   }
 
   private def nextstep() {
     _superstep += 1
+
 
     var crunchsteps: List[CrunchStep[Data]] = Nil
     var substeps: List[Substep[Data]] = Nil
@@ -162,10 +165,6 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       throw new InvalidStepException("Mixing crunches and substeps at step [" + superstep + "]")
     } else if (crunchsteps.nonEmpty) {
       val cruncher = crunchsteps.head.cruncher
-      for (step <- crunchsteps.tail)
-        if (step.cruncher != cruncher)
-          throw new InvalidStepException("Different crunchers are used at step [" + superstep + "]")
-
       try {
         val result = vertices.values.map(_.value) reduceLeft cruncher
         parent ! Crunch(cruncher, result)
@@ -181,9 +180,10 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         carryOn = vertices.keySet
         var outgoing: List[Message[Data]] = Nil
 
+        EventHandler.debug(this, "[" + superstep + "] Received messages count [" + mailbox.values.map(_.size).toList + "]")
         try {
           for (substep <- substeps)
-            outgoing ::: substep.stepfun()
+            outgoing = outgoing ::: substep.stepfun()
         } catch {
           case e => throw new ProcessingException("Substep execution error at step [" + superstep + "]", e)
         }
@@ -198,6 +198,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           case w: ActorRef =>
             w ! TransmitMessage(msg.dest.uuid, msg.value, msg.source.uuid, msg.step)
         }
+        for (vertex <- vertices.values)
+          vertex.moveToNextStep()
         val status = if (carryOn.isEmpty) Halt else Done
         parent ! status
       } else {
@@ -207,7 +209,5 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         nextstep()
       }
     }
-    for (vertex <- vertices.values)
-      vertex.moveToNextStep()
   }
 }
