@@ -36,13 +36,14 @@ class CreateForeman[D](parent: ActorRef)(implicit val manifest: Manifest[D]) ext
 }
 
 object ForemanCreated {
-  def apply(foreman: ActorRef, supervisor: ActorRef) = new ForemanCreated(foreman, supervisor)
-  def unapply(msg: ForemanCreated): Option[(ActorRef, (Uuid, ActorRef))] = Some((msg.fref.actor, (msg.sref.uuid.get, msg.sref.actor)))
+  def apply(foreman: ActorRef, supervisor: ActorRef, monitor: ActorRef) = new ForemanCreated(foreman, supervisor, monitor)
+  def unapply(msg: ForemanCreated): Option[(ActorRef, (ActorRef, Uuid, ActorRef))] = Some((msg.fref.actor, (msg.sref.actor, msg.mref.uuid.get, msg.mref.actor)))
 }
 
-class ForemanCreated(foreman: ActorRef, supervisor: ActorRef) extends ClusterServiceMessage {
+class ForemanCreated(foreman: ActorRef, supervisor: ActorRef, monitor: ActorRef) extends ClusterServiceMessage {
   val fref = new RemoteActorRefData(foreman)
   val sref = new RemoteActorRefData(supervisor)
+  val mref = new RemoteActorRefData(monitor)
 }
 
 case class CreateWorkers(count: Int) extends ClusterServiceMessage
@@ -56,11 +57,11 @@ class WorkersCreated(workers: Iterable[ActorRef]) extends ClusterServiceMessage 
   val wrefs: Array[(Uuid, RemoteActorRefData)] = workers.map(w => (w.uuid -> new RemoteActorRefData(w))).toArray
 }
 
-object GraphSupervisors {
-  def apply(supervisors: Map[Uuid, ActorRef]) = new GraphSupervisors(supervisors)
-  def unapply(msg: GraphSupervisors): Option[Iterable[ActorRef]] = Some(List(msg.srefs: _*).map(_.actor))
+object GraphCFMs {
+  def apply(cfms: Map[Uuid, ActorRef]) = new GraphCFMs(cfms)
+  def unapply(msg: GraphCFMs): Option[Set[ActorRef]] = Some(List(msg.srefs: _*).map(_.actor).toSet)
 }
 
-class GraphSupervisors(supervisors: Map[Uuid, ActorRef]) extends ClusterServiceMessage {
-  val srefs: Array[RemoteActorRefData] = supervisors.map(pair => new RemoteActorRefData(pair._2, pair._1)).toArray
+class GraphCFMs(cfms: Map[Uuid, ActorRef]) extends ClusterServiceMessage {
+  val srefs: Array[RemoteActorRefData] = cfms.map(pair => new RemoteActorRefData(pair._2, pair._1)).toArray
 }

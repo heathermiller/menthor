@@ -4,7 +4,7 @@ import menthor.config.{Config, WorkerModifier}
 import menthor.cluster.{ClusterService, AvailableProcessors}
 import menthor.cluster.{CreateForeman, ForemanCreated}
 import menthor.cluster.{CreateWorkers, WorkersCreated}
-import menthor.cluster.{GraphSupervisor, GraphSupervisors}
+import menthor.cluster.{GraphSupervisor, GraphCFMs, ClusterFailureMonitor}
 import menthor.io.DataIO
 
 import akka.actor.{Actor, ActorRef, Uuid}
@@ -17,6 +17,8 @@ import java.util.concurrent.CountDownLatch
 
 class GraphMaster[Data: Manifest](val dataIO: DataIO[Data], _conf: Option[Config] = None) extends GraphSupervisor {
   def this(dataIO: DataIO[Data], _conf: Config) = this(dataIO, Some(_conf))
+
+  _someCfm = Some(Actor.actorOf[ClusterFailureMonitor].start())
 
   private lazy val conf = _conf getOrElse new Config
 
@@ -117,15 +119,15 @@ class GraphMaster[Data: Manifest](val dataIO: DataIO[Data], _conf: Option[Config
     val graph = Actor.actorOf(new Graph(nodesInfo.size)).start()
     self.link(graph)
 
-    val supervisors: Agent[Map[Uuid,ActorRef]] = Agent(Map.empty)
+    val supervisors: Agent[Map[ActorRef,(Uuid,ActorRef)]] = Agent(Map.empty)
 
     val workersFuture = Future.sequence {
       for {
         (service, workerCount) <- nodesInfo
       } yield {
         service !!! CreateForeman(graph) flatMap { foremanMsg: Any =>
-          val (foreman, (suuid, supervisor)) = foremanMsg match { case ForemanCreated(f, s) => (f, s) }
-          supervisors send (_ + (suuid -> supervisor))
+          val (foreman, (supervisor, muuid, monitor)) = foremanMsg match { case ForemanCreated(f, s) => (f, s) }
+          supervisors send (_ + (supervisor -> (muuid -> monitor)))
           foreman !!! CreateWorkers(workerCount) map { workersMsg: Any =>
             workersMsg match { case WorkersCreated(m) => m }
           }
@@ -136,9 +138,11 @@ class GraphMaster[Data: Manifest](val dataIO: DataIO[Data], _conf: Option[Config
     workersFuture.await
 
     val fsupervisors = supervisors.await
-    graphSupervisors = fsupervisors.values.toList
-    for (s <- graphSupervisors)
-      s ! GraphSupervisors(fsupervisors + (self.uuid -> self))
+
+    val monitors = GraphCFMs(Map(fsupervisors.values.toSeq: _*) + (cfm.uuid -> cfm))
+
+    for (supervisor <- fsupervisors.keys)
+      supervisor ! monitors
 
     graph -> workersFuture.get
   }

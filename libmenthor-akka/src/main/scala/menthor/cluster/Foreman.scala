@@ -5,7 +5,7 @@ import menthor.processing.{ Stop, Next, WorkerStatusMessage, Done, Halt, Crunch,
 import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
-import akka.actor.{Actor, ActorRef, UnlinkAndStop}
+import akka.actor.{Actor, ActorRef}
 import collection.mutable.ListBuffer
 
 class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
@@ -13,7 +13,7 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
 
   override def postStop() {
     if (self.supervisor.isDefined)
-      self.supervisor.get ! UnlinkAndStop(self)
+      self.supervisor.get.stop()
   }
 
   def receive = {

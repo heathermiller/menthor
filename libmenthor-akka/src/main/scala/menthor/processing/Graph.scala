@@ -3,7 +3,7 @@ package menthor.processing
 import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
-import akka.actor.{Actor, ActorRef, Uuid, UnlinkAndStop}
+import akka.actor.{Actor, ActorRef, Uuid}
 import akka.event.EventHandler
 
 class Graph[Data](val childrenCount: Int) extends Actor {
@@ -11,7 +11,7 @@ class Graph[Data](val childrenCount: Int) extends Actor {
 
   override def postStop() {
     if (self.supervisor.isDefined)
-      self.supervisor.get ! UnlinkAndStop(self)
+      self.supervisor.get.stop()
   }
 
   def receive = {

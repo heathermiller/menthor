@@ -13,10 +13,11 @@ class ClusterService extends Actor {
       self.channel ! AvailableProcessors(Runtime.getRuntime.availableProcessors)
     case msg @ CreateForeman(parent) =>
       implicit val m: Manifest[msg.Data] = msg.manifest
-      val supervisor = actorOf[GraphSupervisor].start()
+      val monitor = actorOf[ClusterFailureMonitor].start()
+      val supervisor = actorOf(new GraphSupervisor(monitor)).start()
       val foreman = actorOf(new Foreman[msg.Data](parent)).start()
       supervisor.link(foreman)
-      self.channel ! ForemanCreated(foreman, supervisor)
+      self.channel ! ForemanCreated(foreman, supervisor, monitor)
   }
 
   override def postStop() {

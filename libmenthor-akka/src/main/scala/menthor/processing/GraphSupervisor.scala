@@ -1,40 +1,48 @@
 package menthor.cluster
 
-import akka.actor.{Actor, ActorRef, Exit}
-import akka.config.Supervision.{AllForOneStrategy, Permanent}
+import akka.AkkaException
+import akka.actor.{ Actor, ActorRef }
+import akka.actor.MaximumNumberOfRestartsWithinTimeRangeReached
+import akka.config.Supervision.{ AllForOneStrategy, Permanent }
 
-import menthor.MenthorException
+class NodeFailure(cause: Throwable) extends AkkaException(cause = cause)
 
-class GraphSupervisorException private[menthor](message: String, cause: Throwable = null) extends MenthorException(message, cause)
+class ClusterFailureMonitor extends Actor {
+  self.lifeCycle = Permanent
+  def receive = { case e: NodeFailure => throw e }
+}
 
-class GraphSupervisor extends Actor {
-  self.faultHandler = AllForOneStrategy(List(classOf[Throwable]), None, None)
+class GraphSupervisor(var _someCfm: Option[ActorRef]) extends Actor {
+  def this() = this(None)
+  def this(cfm: ActorRef) = this(Some(cfm))
 
-  var graphSupervisors: List[ActorRef] = Nil
+  def cfm = _someCfm.get
 
-  val lifeCyle = Permanent
+  self.faultHandler = AllForOneStrategy(List(classOf[Throwable]), 0, -1)
 
-  def receive = {
-    case GraphSupervisors(supervisors) =>
-      for {
-        supervisor <- supervisors
-        if (supervisor != self)
-      } graphSupervisors = supervisor :: graphSupervisors
-  }
+  private var monitors = Set.empty[ActorRef]
 
-  override def preRestart(cause: Throwable) {
-    val e = new GraphSupervisorException(
-      "", cause
-    )
-    for (supervisor <- graphSupervisors)
-      supervisor ! Exit(null, e)
-  }
-
-  override def postRestart(cause: Throwable) {
-    self.stop()
+  override def receive = {
+    case GraphCFMs(cfms) =>
+      if (_someCfm.isDefined) {
+        self.link(cfm)
+        monitors = cfms - cfm
+      } else monitors = cfms
+    case MaximumNumberOfRestartsWithinTimeRangeReached(victim, _, _, cause)
+    if (_someCfm.isDefined && victim == cfm) =>
+      cause match {
+        case _: NodeFailure =>
+          self.stop()
+        case _ =>
+          for (cfm <- monitors)
+            cfm ! new NodeFailure(cause)
+          self.stop()
+      }
   }
 
   override def postStop() {
+    if (_someCfm.isDefined)
+      cfm.stop()
     val i = self.linkedActors.values.iterator
     while (i.hasNext)
       self.unlink(i.next)

@@ -25,8 +25,10 @@ object ClusterServiceAppFixture extends App {
   prop += ("akka.mode" -> "debug")
 
   ClusterService.run(port = 2552 + util.Random.nextInt(1000))
+  EventHandler.debug(this, "Cluster Service Started")
   remote.actorFor("init-test-service", Settings.HOSTNAME, 1234) ! remote.address
   ClusterService.keepAlive.await
+  EventHandler.debug(this, "Remaining actors: " + List(registry.actors: _*))
   sys.exit()
 }
 
@@ -62,9 +64,9 @@ class TestVertex(val initialValue: Int) extends Vertex[Int] {
 }
 
 object TestConfig {
-  val verticesPerWorker = 10
-  val workersPerNode = 4
-  val clusterNodes = 4
+  val verticesPerWorker = 2
+  val workersPerNode = 2
+  val clusterNodes = 0
 }
 
 class TestDataIO extends AbstractDataIO[Int, Int] {
@@ -154,11 +156,13 @@ class ClusterServiceAcceptance extends FunSuite {
     val success = successful.await
     remote.unregister("end-test-service")
     endService.stop()
+
     for (address <- addresses)
       remote.actorFor(classOf[ClusterService].getCanonicalName, address.getHostName, address.getPort).stop()
     for (process <- processes)
       process.exitValue()
 
+    EventHandler.debug(this, "Remaining actors: " + List(registry.actors: _*))
     remote.shutdown()
     registry.shutdownAll()
     assert(success)
