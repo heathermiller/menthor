@@ -116,6 +116,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         for (nid <- neighbors)
           vertex.connectTo(known(nid))
       }
+      for (vertex <- vertices.values)
+        vertex.initialize
       become(processing(0))
       parent ! SetupDone(Set(self.uuid))
   }

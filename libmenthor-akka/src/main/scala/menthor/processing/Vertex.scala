@@ -8,7 +8,7 @@ trait Vertex[Data] {
     case None => throw new IllegalStateException("Not inside a worker")
   }
 
-  protected var data = initialValue
+  private var data = initialValue
 
   def connectTo(successor: VertexRef): Unit
 
@@ -17,6 +17,8 @@ trait Vertex[Data] {
   final def numVertices: Int = worker.totalNumVertices
 
   final def value: Data = data
+
+  protected final def value_=(x: Data) { data = x }
 
   def initialValue: Data
 
@@ -34,18 +36,22 @@ trait Vertex[Data] {
 
   final def process(block: => List[Message[Data]]) = new Substep(block _)
 
-//  protected implicit final def mkSubstep(block: => List[Message[Data]]): Step[Data] = new Substep(() => block)
+  protected final def until(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] = new Substep(block _, None, Some(cond _))
 
-//  protected final def until(cond: => Boolean)(block: => List[Message[Data]]): Step[Data] =
-//    new Substep(block _, None, Some(cond _))
-
-//  protected final def crunch(fun: (Data, Data) => Data): Step[Data] =
-//    new CrunchStep(fun)
+  protected final def crunch(fun: (Data, Data) => Data): Step[Data] = new CrunchStep(fun)
 
   protected def update: Step[Data]
 
-  protected final def voteToHalt(): List[Message[Data]] = {
+  protected final def voteToHalt: List[Message[Data]] = {
     worker.voteToHalt(ref.uuid)
     Nil
+  }
+}
+
+trait SimpleVertex[Data] extends Vertex[Data] {
+  private var _neighbors: List[VertexRef] = Nil
+  def neighbors = _neighbors
+  def connectTo(successor: VertexRef) {
+    _neighbors = successor :: _neighbors
   }
 }
