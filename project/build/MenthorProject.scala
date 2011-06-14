@@ -29,6 +29,6 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
     }
 
   trait ScalatestDep {
-    val scalatest = "org.scalatest" % "scalatest_2.9.0" % "1.4.1" % "test"
+    val scalatest = "org.scalatest" % "scalatest_2.9.0" % "1.6.1" % "test"
   }
 }
