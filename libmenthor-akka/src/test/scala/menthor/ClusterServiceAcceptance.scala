@@ -64,9 +64,9 @@ class TestVertex(val initialValue: Int) extends Vertex[Int] {
 }
 
 object TestConfig {
-  val verticesPerWorker = 2
-  val workersPerNode = 2
-  val clusterNodes = 0
+  val verticesPerWorker = 10
+  val workersPerNode = 4
+  val clusterNodes = 4
 }
 
 class TestDataIO extends AbstractDataIO[Int, Int] {
