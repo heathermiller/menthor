@@ -5,6 +5,7 @@ import menthor.io.DataIO
 
 import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid, Unlink}
 import akka.config.Supervision.Temporary
+import akka.event.EventHandler
 
 import collection.mutable
 
@@ -148,8 +149,13 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       else become(dropMessages(rem))
     case Next(info) =>
       val rem = remaining + info.getOrElse(self.uuid, 0)
-      if (rem == 0) nextstep()
-      else become(processing(rem))
+      if (rem == 0) {
+        nextstep()
+        EventHandler.debug(this, "No race condition")
+      } else {
+        EventHandler.debug(this, "Race condition avoided")
+        become(processing(rem))
+      }
   }
 
   def dropMessages(remaining: Int): Actor.Receive = {

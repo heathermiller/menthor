@@ -25,6 +25,7 @@ object ClusterServiceAppFixture extends App {
   prop += ("akka.mode" -> "debug")
 
   ClusterService.run(port = 2552 + util.Random.nextInt(1000))
+  EventHandler.debug(this, "Cluster Service Started")
   remote.actorFor("init-test-service", Settings.HOSTNAME, 1234) ! remote.address
   ClusterService.keepAlive.await
   sys.exit()
