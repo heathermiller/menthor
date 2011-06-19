@@ -33,6 +33,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     override def default(v: Uuid) = Nil
   }
 
+  private var futureMessages: List[Message[Data]] = Nil
+
   def totalNumVertices = _totalNumVertices
 
   def superstep: Superstep = _superstep
@@ -122,23 +124,22 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   }
 
   def processing(remaining: Int): Actor.Receive = {
-    case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
-      val msg = _msg.asInstanceOf[Message[Data]]
-      mailbox(dest.uuid) = msg :: mailbox(dest.uuid)
-
-      if (remaining - 1 == 0) {
-        nextstep()
-      } else become(processing(remaining - 1))
-    case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) =>
+    case msg@DataMessage(step, duuid) if ((step >= superstep) && (vertices contains duuid)) =>
       assert(self.sender.isDefined)
-      val value = _value.asInstanceOf[Data]
-      val msg = Message(vertices(dest).ref, value)(new VertexRef(source._1, source._2, self.sender.get), step)
-      mailbox(dest) = msg :: mailbox(dest)
-
-      if (remaining - 1 == 0) {
-        nextstep()
+      val message = msg match {
+        case Message(dest, _) =>
+          msg.asInstanceOf[Message[Data]]
+        case TransmitMessage(dest, _value, (vuuid, wuuid), _) =>
+          val value = _value.asInstanceOf[Data]
+          Message(vertices(dest).ref, value)(new VertexRef(vuuid, wuuid, self.sender.get), step)
       }
-      else become(processing(remaining - 1))
+      if (step == superstep) {
+        mailbox(duuid) = message :: mailbox(duuid)
+        if (remaining - 1 == 0) nextstep()
+        else become(processing(remaining - 1))
+      } else {
+        futureMessages = message :: futureMessages
+      }
     case Stop(info) =>
       output.processVertices(self.uuid, vertices.values)
       mailbox.clear
@@ -148,12 +149,10 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       else become(dropMessages(rem))
     case Next(info) =>
       val rem = remaining + info.getOrElse(self.uuid, 0)
-      if (rem == 0) {
-        nextstep()
-      } else {
-        become(processing(rem))
-      }
+      if (rem == 0) nextstep()
+      else become(processing(rem))
     case CrunchResult(_) if vertices.isEmpty =>
+      nextstep()
   }
 
   def dropMessages(remaining: Int): Actor.Receive = {
@@ -199,8 +198,9 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       } catch {
         case e => throw new ProcessingException("Cruncher application error at step [" + superstep + "]", e)
       }
+      for (vertex <- vertices.values)
+        vertex.moveToNextStep()
     } else if (substeps.nonEmpty) {
-      become(processing(0))
       val validStep = substeps forall { substep =>
         ! (substep.cond.isDefined && substep.cond.get())
       }
@@ -227,8 +227,18 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           case w: ActorRef =>
             w ! TransmitMessage(msg.dest.uuid, msg.value, (msg.source.uuid, self.uuid), msg.step)
         }
+
+        val (stepMessages, nextStepsMessages) = futureMessages.partition(_.step == superstep)
+        for (msg <- stepMessages)
+          mailbox(msg.dest.uuid) = msg :: mailbox(msg.dest.uuid)
+        futureMessages = nextStepsMessages
+
+        become(processing(- stepMessages.size))
+
         val status = if (carryOn.isEmpty) Halt(postInfo) else Done(postInfo)
         parent ! status
+        for (vertex <- vertices.values)
+          vertex.moveToNextStep()
       } else {
         for (vertex <- vertices.values)
           vertex.moveToNextStep()
@@ -238,8 +248,8 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     } else {
       become(processing(0))
       parent ! NothingToDo
+      for (vertex <- vertices.values)
+        vertex.moveToNextStep()
     }
-    for (vertex <- vertices.values)
-      vertex.moveToNextStep()
   }
 }
