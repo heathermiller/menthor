@@ -131,6 +131,7 @@ class ClusterServiceAcceptance extends FunSuite {
     initService.stop()
 
     val addresses = servicesAddress.await
+    servicesAddress.close()
     val conf = new Config {
       override val localWorkers = TestConfig.workersPerNode
       override val configuration = addresses.map { address =>
@@ -154,6 +155,7 @@ class ClusterServiceAcceptance extends FunSuite {
 
     finished.await
     val success = successful.await
+    successful.close()
     remote.unregister("end-test-service")
     endService.stop()
 

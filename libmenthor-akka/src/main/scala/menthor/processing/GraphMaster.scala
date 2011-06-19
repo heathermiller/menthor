@@ -142,6 +142,7 @@ class GraphMaster[Data: Manifest](val dataIO: DataIOMaster[Data], _conf: Option[
     workersFuture.await
 
     val fsupervisors = supervisors.await
+    supervisors.close()
 
     val monitors = GraphCFMs(Map(fsupervisors.values.toSeq: _*) + (cfm.uuid -> cfm))
 

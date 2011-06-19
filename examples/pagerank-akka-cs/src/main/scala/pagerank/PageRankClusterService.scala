@@ -1,6 +1,6 @@
 package pagerank
 
-import akka.actor.Actor.{ actorOf, remote, registry, spawn }
+import akka.actor.Actor.{ actorOf, remote, registry }
 import menthor.cluster.ClusterService
 
 object PageRankClusterService {
