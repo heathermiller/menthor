@@ -5,7 +5,6 @@ import menthor.io.DataIO
 
 import akka.actor.{Actor, ActorRef, LocalActorRef, Channel, Uuid, Unlink}
 import akka.config.Supervision.Temporary
-import akka.event.EventHandler
 
 import collection.mutable
 
@@ -128,7 +127,6 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       mailbox(dest.uuid) = msg :: mailbox(dest.uuid)
 
       if (remaining - 1 == 0) {
-        become(processing(0))
         nextstep()
       } else become(processing(remaining - 1))
     case TransmitMessage(dest, _value, source, step) if ((step == superstep) && (vertices contains dest)) =>
@@ -139,7 +137,6 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
       if (remaining - 1 == 0) {
         nextstep()
-        become(processing(0))
       }
       else become(processing(remaining - 1))
     case Stop(info) =>
@@ -153,11 +150,10 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       val rem = remaining + info.getOrElse(self.uuid, 0)
       if (rem == 0) {
         nextstep()
-        EventHandler.debug(this, "No race condition")
       } else {
-        EventHandler.debug(this, "Race condition avoided")
         become(processing(rem))
       }
+    case CrunchResult(_) if vertices.isEmpty =>
   }
 
   def dropMessages(remaining: Int): Actor.Receive = {
@@ -176,15 +172,11 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         val msg = Message(vertex.ref, result)(null, superstep)
         mailbox(uuid) = msg :: mailbox(uuid)
       }
-      for (vertex <- vertices.values)
-        vertex.moveToNextStep()
-      become(processing(0))
       nextstep()
   }
 
   private def nextstep() {
     _superstep += 1
-
 
     var crunchsteps: List[CrunchStep[Data]] = Nil
     var substeps: List[Substep[Data]] = Nil
@@ -199,6 +191,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       throw new InvalidStepException("Mixing crunches and substeps at step [" + superstep + "]")
     } else if (crunchsteps.nonEmpty) {
       become(crunchResult)
+      mailbox.clear()
       val cruncher = crunchsteps.head.cruncher
       try {
         val result = vertices.values.map(_.value) reduceLeft cruncher
@@ -234,8 +227,6 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           case w: ActorRef =>
             w ! TransmitMessage(msg.dest.uuid, msg.value, (msg.source.uuid, self.uuid), msg.step)
         }
-        for (vertex <- vertices.values)
-          vertex.moveToNextStep()
         val status = if (carryOn.isEmpty) Halt(postInfo) else Done(postInfo)
         parent ! status
       } else {
@@ -244,6 +235,11 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         _superstep -= 1
         nextstep()
       }
+    } else {
+      become(processing(0))
+      parent ! NothingToDo
     }
+    for (vertex <- vertices.values)
+      vertex.moveToNextStep()
   }
 }

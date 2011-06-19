@@ -26,12 +26,18 @@ object Next {
 
 class Next(val postInfo: Array[(Uuid,Int)]) extends ControlMessage
 
+case class CrunchResult[Data](result: Data) extends ControlMessage
+
+sealed abstract class WorkerMessage extends InternalMessage
+
 object WorkerStatusMessage {
   def aggregatePostInfo(i1: Array[(Uuid,Int)], i2: Array[(Uuid,Int)]) = {
     (List(i1: _*) ::: List(i2: _*)).groupBy(_._1).mapValues(_.foldLeft(0)(_ + _._2)).toArray
   }
 
-  def reduceStatusMessage(ctrl1: WorkerStatusMessage, ctrl2: WorkerStatusMessage) = (ctrl1, ctrl2) match {
+  def reduceStatusMessage(ctrl1: WorkerStatusMessage, ctrl2: WorkerStatusMessage): WorkerStatusMessage = (ctrl1, ctrl2) match {
+    case (_, NothingToDo) => ctrl1
+    case (NothingToDo, _) => ctrl2
     case (d1: Done, d2: Done) => new Done(aggregatePostInfo(d1.postInfo, d2.postInfo))
     case (d: Done, h: Halt) => new Done(aggregatePostInfo(d.postInfo,h.postInfo))
     case (h: Halt, d: Done) => new Done(aggregatePostInfo(h.postInfo,d.postInfo))
@@ -39,7 +45,7 @@ object WorkerStatusMessage {
   }
 }
 
-sealed abstract class WorkerStatusMessage extends InternalMessage
+sealed trait WorkerStatusMessage extends WorkerMessage
 
 object Done {
   def apply(postInfo: Map[Uuid,Int]) = new Done(postInfo.toArray)
@@ -59,25 +65,26 @@ object Halt {
 
 class Halt(val postInfo: Array[(Uuid,Int)]) extends WorkerStatusMessage
 
-sealed abstract class CrunchMessage extends InternalMessage
-
 object Crunch {
-  def reduceCrunch[Data](crunch1: Crunch[Data], crunch2: Crunch[Data]) = {
-    if (crunch1.cruncher(crunch1.result, crunch2.result) != crunch2.cruncher(crunch1.result, crunch2.result))
-      throw new InvalidStepException("Different crunchers are used in the same step")
-    try {
-      Crunch(crunch1.cruncher, crunch1.cruncher(crunch1.result, crunch2.result))
-    } catch {
-      case e => throw new ProcessingException("Cruncher application error", e)
-    }
+  def reduceCrunch[Data](crunch1: Crunch[Data], crunch2: CrunchMessage): Crunch[Data] = (crunch1, crunch2) match {
+    case (_, NothingToDo) => crunch1
+    case (c1, _: Crunch[_]) =>
+      val c2 = crunch2.asInstanceOf[Crunch[Data]]
+      try {
+        Crunch(c1.cruncher, c1.cruncher(c1.result, c2.result))
+      } catch {
+        case e => throw new ProcessingException("Cruncher application error", e)
+      }
   }
 }
 
+sealed trait CrunchMessage extends WorkerMessage
+
 case class Crunch[Data](cruncher: (Data, Data) => Data, result: Data) extends CrunchMessage
 
-case class CrunchResult[Data](result: Data) extends CrunchMessage
+case object NothingToDo extends WorkerMessage with CrunchMessage with WorkerStatusMessage
 
-sealed abstract class DataMessage
+sealed abstract class DataMessage extends Serializable
 
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,

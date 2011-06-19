@@ -1,7 +1,6 @@
 package menthor.cluster
 
-import menthor.processing.{ Worker, InvalidStepException }
-import menthor.processing.{ Stop, Next, WorkerStatusMessage, Done, Halt, Crunch, CrunchResult, SetupDone }
+import menthor.processing._
 import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
@@ -49,33 +48,32 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
     case Next(info) =>
       for (child <- children)
         child ! Next(info.filterKeys(_ == child.uuid))
-      become(processing, false)
+      become(processing(children))
     case msg @ CrunchResult(_) =>
       for (child <- children)
         child ! msg
-      become(processing, false)
+      become(processing(children))
     }
 
-  def processing: Actor.Receive = {
-    case msg: WorkerStatusMessage =>
+  def processing(remaining: Set[ActorRef]): Actor.Receive = {
+    case msg: WorkerMessage =>
       assert(self.sender.isDefined)
       val worker = self.sender.get
-      assert(children contains worker)
+      assert(remaining contains worker)
+      val _remaining = remaining - worker
 
-      if ((children - worker) isEmpty) {
-        unbecome()
+      if ((_remaining) isEmpty) {
+        become(fromGraph)
         parent ! msg
-      } else become(stepStatus(children - worker, msg))
-    case _crunch: Crunch[_] =>
-      assert(self.sender.isDefined)
-      val worker = self.sender.get
-      assert(children contains worker)
-      val crunch = _crunch.asInstanceOf[Crunch[Data]]
-
-      if ((children - worker) isEmpty) {
-        unbecome()
-        parent ! crunch
-      } else become(crunching(children - worker, crunch))
+      } else msg match {
+        case NothingToDo =>
+          become(processing(_remaining))
+        case wsm: WorkerStatusMessage =>
+          become(stepStatus(_remaining, wsm))
+        case _crunch: Crunch[_] =>
+          val crunch = _crunch.asInstanceOf[Crunch[Data]]
+          become(crunching(_remaining, crunch))
+      }
   }
 
   def stepStatus(remaining: Set[ActorRef], status: WorkerStatusMessage): Actor.Receive = {
@@ -86,7 +84,7 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
       val _status = reduceStatusMessage(status, msg)
 
       if ((remaining - worker) isEmpty) {
-        unbecome()
+        become(fromGraph)
         parent ! _status
       } else become(stepStatus(remaining - worker, _status))
     case _: Crunch[_] =>
@@ -94,15 +92,14 @@ class Foreman[Data: Manifest](val parent: ActorRef) extends Actor {
   }
 
   def crunching(remaining: Set[ActorRef], crunch1: Crunch[Data]): Actor.Receive = {
-    case _crunch2: Crunch[_] =>
+    case crunch2: CrunchMessage =>
       assert(self.sender.isDefined && remaining.nonEmpty)
       val worker = self.sender.get
       assert(remaining contains worker)
-      val crunch2 = _crunch2.asInstanceOf[Crunch[Data]]
       val crunch = reduceCrunch(crunch1, crunch2)
 
       if ((remaining - worker) isEmpty) {
-        unbecome()
+        become(fromGraph)
         parent ! crunch
       } else become(crunching(remaining - worker, crunch))
     case _: WorkerStatusMessage =>

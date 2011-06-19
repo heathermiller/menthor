@@ -4,7 +4,6 @@ import Crunch.reduceCrunch
 import WorkerStatusMessage.reduceStatusMessage
 
 import akka.actor.{Actor, ActorRef, Uuid}
-import akka.event.EventHandler
 
 class Graph[Data](val childrenCount: Int) extends Actor {
   var children = Map.empty[ActorRef, Set[Uuid]]
@@ -19,35 +18,38 @@ class Graph[Data](val childrenCount: Int) extends Actor {
       assert(self.sender.isDefined)
       children += (self.sender.get -> workers)
       if (childrenCount == children.size) {
-        become(processing)
+        become(processing(childrenCount))
         for ((child, _) <- children)
           child ! Next(Map.empty)
       }
   }
 
-  def processing: Actor.Receive = {
-    case msg: WorkerStatusMessage =>
+  def processing(remaining: Int): Actor.Receive = {
+    case msg: WorkerMessage =>
       assert(self.sender.isDefined)
-
-      if (childrenCount > 1) become(stepStatus(childrenCount - 1, msg), false)
-      else msg match {
-        case Halt(info) =>
-          EventHandler.debug(this, "Computation complete")
-          for ((child, uuids) <- children)
-            child ! Stop(info.filterKeys(uuids contains _))
-          self.stop()
-        case Done(info) =>
-          for ((child, uuids) <- children)
-            child ! Next(info.filterKeys(uuids contains _))
-      }
-    case _crunch: Crunch[_] =>
-      assert(self.sender.isDefined)
-      val crunch = _crunch.asInstanceOf[Crunch[Data]]
-
-      if (childrenCount > 1) become(crunching(childrenCount - 1, crunch), false)
-      else {
-        for (child <- children.keys)
-          child ! CrunchResult(crunch.result)
+      msg match {
+        case NothingToDo =>
+          if (remaining > 1) become(processing(remaining - 1))
+          else
+            for (child <- children.keys)
+              child ! Stop(Map.empty)
+        case wsm: WorkerStatusMessage =>
+          if (remaining > 1) become(stepStatus(remaining - 1, wsm))
+          else msg match {
+            case Halt(info) =>
+              for ((child, uuids) <- children)
+                child ! Stop(info.filterKeys(uuids contains _))
+              self.stop()
+            case Done(info) =>
+              for ((child, uuids) <- children)
+                child ! Next(info.filterKeys(uuids contains _))
+          }
+        case _crunch: Crunch[_] =>
+          val crunch = _crunch.asInstanceOf[Crunch[Data]]
+          if (childrenCount > 1) become(crunching(remaining - 1, crunch))
+          else
+            for (child <- children.keys)
+              child ! CrunchResult(crunch.result)
       }
   }
 
@@ -59,12 +61,11 @@ class Graph[Data](val childrenCount: Int) extends Actor {
       if (remaining > 1) become(stepStatus(remaining - 1, _status))
       else _status match {
         case Halt(info) =>
-          EventHandler.debug(this, "Computation complete")
           for ((child, uuids) <- children)
             child ! Stop(info.filterKeys(uuids contains _))
           self.stop()
         case Done(info) =>
-          unbecome()
+          become(processing(childrenCount))
           for ((child, uuids) <- children)
             child ! Next(info.filterKeys(uuids contains _))
       }
@@ -73,14 +74,13 @@ class Graph[Data](val childrenCount: Int) extends Actor {
   }
 
   def crunching(remaining: Int, crunch1: Crunch[Data]): Actor.Receive = {
-    case _crunch2: Crunch[_] =>
+    case crunch2: CrunchMessage =>
       assert(self.sender.isDefined && remaining > 0)
-      val crunch2 = _crunch2.asInstanceOf[Crunch[Data]]
       val crunch = reduceCrunch(crunch1, crunch2)
 
       if (remaining > 1) become(crunching(remaining - 1, crunch))
       else {
-        unbecome()
+        become(processing(childrenCount))
         for (child <- children.keys)
           child ! CrunchResult(crunch.result)
       }

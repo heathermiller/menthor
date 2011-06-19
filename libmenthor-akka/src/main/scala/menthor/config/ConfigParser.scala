@@ -11,14 +11,14 @@ object WorkerModifier extends Enumeration {
   val Minus = Value
 }
 
-class ConfigParser extends RegexParsers {
+object ConfigParser extends RegexParsers {
   override val whiteSpace = """(\s+|#[^\n]*\n)+""".r
 
   // Tokens
   val ipToken: Parser[String] = """[0-9a-fA-F:.]+""".r
   val hostnameToken: Parser[String] = """[-A-Za-z0-9.]+""".r
   val portToken: Parser[String] = """\d+""".r
-  val workerModToken: Parser[String] = """[-+*]?""".r
+  val workerModToken: Parser[String] = """[-+*]""".r
   val workerToken: Parser[String] = """\d+""".r
 
   def hostname = "[" ~> (ipToken ||| hostnameToken) <~ "]"
@@ -42,9 +42,9 @@ class ConfigParser extends RegexParsers {
     case ~(mod, count) => (mod, count)
   }
 
-  def config = entry *
-
   def entry = (hostname ~ ((port ?) ~ (worker ?))) ^? {
     case ~(hostname, ~(port, worker)) => (hostname, port, worker)
   }
+
+  def config = entry *
 }
