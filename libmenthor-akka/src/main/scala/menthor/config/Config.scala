@@ -13,7 +13,7 @@ class Config {
 
   val configuration: List[(String, Option[Int], Option[(WorkerModifier.Value, Int)])] = {
     try {
-      if (sysProp contains "menthor.conf") {
+      if (sysProp.getOrElse("menthor.conf", "") != "") {
         val source = Source.fromFile(sysProp("menthor.conf"))
         ConfigParser.parseAll(ConfigParser.config, source.bufferedReader).get
       } else if (getClass.getClassLoader.getResource("menthor.conf") ne null) {

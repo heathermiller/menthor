@@ -65,6 +65,11 @@ class GraphMaster[Data: Manifest](val dataIO: DataIOMaster[Data], _conf: Option[
     self ! "PostStart"
   }
 
+  override def postStop {
+    super.postStop()
+    Actor.remote.shutdown()
+  }
+
   private def createTopology: (ActorRef, List[Map[Uuid, ActorRef]]) = {
     if (conf.configuration.isEmpty) createLocalTopology
     else createClusterTopology
@@ -87,6 +92,7 @@ class GraphMaster[Data: Manifest](val dataIO: DataIOMaster[Data], _conf: Option[
   }
     
   private def createClusterTopology = {
+    Actor.remote.start()
     val nodesInfo = Future.sequence {
       for {
         (hostname, _port, _workerCount) <- conf.configuration
