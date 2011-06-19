@@ -8,6 +8,20 @@ import akka.serialization.RemoteActorSerialization._
 
 import collection.mutable
 
+trait DataIOMaster[Data] {
+  protected implicit var binaryWorker = Map.empty[Uuid, Array[Byte]]
+
+  protected def partitionVertices(topology: List[List[Uuid]]): Unit
+
+  private[menthor] def useWorkers(workers: List[Map[Uuid, ActorRef]]) {
+    partitionVertices(workers.map(_.keys.toList))
+    for ((uuid, worker) <- workers.flatten)
+      binaryWorker += uuid -> toRemoteActorRefProtocol(worker).toByteArray
+  }
+
+  def workerIO(worker: Uuid): DataIO[Data]
+}
+
 trait DataIO[Data] extends Serializable {
   type VertexID
   implicit def vidmanifest: Manifest[VertexID]
@@ -18,20 +32,8 @@ trait DataIO[Data] extends Serializable {
   def createVertex(vid: VertexID): Vertex[Data]
   def processVertices(worker: Uuid, vertices: Iterable[Vertex[Data]])
 
-  def workerIO(worker: Uuid): DataIO[Data]
-
-  protected def partitionVertices(topology: List[List[Uuid]]): Unit
-
-  private var binaryWorker = Map.empty[Uuid, Array[Byte]]
-
-  @transient private var workerRef = mutable.Map.empty[Uuid, ActorRef]
-
-  private[menthor] def useWorkers(workers: List[Map[Uuid, ActorRef]]) {
-    partitionVertices(workers.map(_.keys.toList))
-    workerRef ++= workers.flatten
-    for ((uuid, worker) <- workers.flatten)
-      binaryWorker += uuid -> toRemoteActorRefProtocol(worker).toByteArray
-  }
+  protected var binaryWorker: Map[Uuid, Array[Byte]]
+  @transient private var workerRef: mutable.Map[Uuid, ActorRef] = null
 
   private[menthor] def owner(vid: VertexID): ActorRef = {
     val uuid = ownerUuid(vid)

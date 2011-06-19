@@ -69,7 +69,7 @@ object TestConfig {
   val clusterNodes = 4
 }
 
-class TestDataIO extends AbstractDataIO[Int, Int] {
+class TestDataIO extends AbstractDataIO[Int, Int] with DataIOMaster[Int] {
   var verticesPartitions = Map.empty[Uuid, Map[VertexID, List[VertexID]]]
   var workers: List[Uuid] = Nil
 
