@@ -84,6 +84,13 @@ given result:
     [info] == Wikipedia Pagerank / run ==
     [success] Successful.
 
+## Pagerank (Akka)
+
+    $ mkdir results
+    $ sbt 'project pagerank-akka-cs' 'set akka.mode serv1' 'run'
+    $ sbt 'project pagerank-akka-cs' 'set akka.mode serv2' 'run'
+    $ sbt 'project pagerank-akka' 'run data/links-sorted-small.txt data/titles-sorted-small.txt results/ <pages> [iterations]'
+
 ## Hierarchical Clustering
 
 The Hierarchical Clustering application takes 4 arguments:

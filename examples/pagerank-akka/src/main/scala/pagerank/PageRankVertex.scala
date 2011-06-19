@@ -1,6 +1,8 @@
+package pagerank
+
 import menthor.processing.{ SimpleVertex, Message }
 
-class PageRankVertex(val label: String, _margin: Double = 0.0d, val damping: Double = 0.85d, val iterations: Int = 0) extends SimpleVertex[Double] {
+class PageRankVertex(val label: String, _margin: Double = 0.00001d, val damping: Double = 0.85d, val iterations: Int = 0) extends SimpleVertex[Double] {
   val initialValue = 0.0d
 
   val margin = _margin.abs
@@ -11,7 +13,7 @@ class PageRankVertex(val label: String, _margin: Double = 0.0d, val damping: Dou
     val diff = (newvalue - value).abs
     value = newvalue
 
-    if (diff > margin || superstep != iterations) {
+    if ((diff > margin) && (superstep != iterations)) {
       val n = neighbors.size
       for (neighbor <- neighbors)
         yield Message(neighbor, value / n)

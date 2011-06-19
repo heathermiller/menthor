@@ -18,6 +18,9 @@ class MenthorProject(info: ProjectInfo) extends ParentProject(info) {
     lazy val pagerank_akka = project("pagerank-akka", "pagerank-akka",
       libmenthor_akka)
 
+    lazy val pagerank_akka_cs = project("pagerank-akka-cs", "pagerank-akka-cs",
+      pagerank_akka)
+
     lazy val sssp = project("sssp", "sssp", libmenthor)
 
     lazy val clustering = project("clustering", "hierarchical-clustering",

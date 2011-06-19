@@ -13,4 +13,5 @@ object PageRankGraphParser extends RegexParsers {
   def successors = rep(vid)
   def vertex = head ~ successors ^? { case ~(head, successors) => (head, successors) }
   def vertexLine = vertex <~ eol
+  def graph = rep(vertexLine)
 }
