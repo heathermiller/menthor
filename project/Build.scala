@@ -14,9 +14,10 @@ object BuildSettings {
 }
 
 object Resolvers {
-  val akkarepo = "Akka Repo" at "http://akka.io/repository"
+  val akkarepo = "Akka Repository" at "http://akka.io/repository"
+  val guiceyfruitrepo = "GuiceyFruit Release Repository" at "http://guiceyfruit.googlecode.com/svn/repo/releases/"
 
-  val akkaResolvers = Seq (akkarepo)
+  val akkaResolvers = Seq (akkarepo, guiceyfruitrepo)
 }
 
 object Dependencies {
