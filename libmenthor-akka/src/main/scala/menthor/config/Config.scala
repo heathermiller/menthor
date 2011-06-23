@@ -1,20 +1,17 @@
 package menthor.config
 
-import sys.SystemProperties
 import io.Source
 
 class Config {
-  val sysProp = new SystemProperties
-
   val localWorkers: Int = {
-    val workerCountSysProp = sysProp.get("menthor.workers").map(_.toInt)
+    val workerCountSysProp = sys.props.get("menthor.workers").map(_.toInt)
     workerCountSysProp.filter(_ != 0) getOrElse Runtime.getRuntime.availableProcessors
   }
 
   val configuration: List[(String, Option[Int], Option[(WorkerModifier.Value, Int)])] = {
     try {
-      if (sysProp.getOrElse("menthor.conf", "") != "") {
-        val source = Source.fromFile(sysProp("menthor.conf"))
+      if (sys.props.getOrElse("menthor.conf", "") != "") {
+        val source = Source.fromFile(sys.props("menthor.conf"))
         ConfigParser.parseAll(ConfigParser.config, source.bufferedReader).get
       } else if (getClass.getClassLoader.getResource("menthor.conf") ne null) {
         val source = Source.fromURL(getClass.getClassLoader.getResource("menthor.conf"))

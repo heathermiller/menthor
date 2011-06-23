@@ -6,7 +6,6 @@ import menthor.config._
 import menthor.cluster._
 
 import org.scalatest.FunSuite
-import scala.sys.SystemProperties
 import scala.sys.process.{ Process, ProcessBuilder, ProcessLogger }
 import java.net.{ URLClassLoader, InetSocketAddress }
 import java.util.concurrent.CountDownLatch
@@ -21,8 +20,7 @@ import akka.remote.{ RemoteServerSettings => Settings }
 class ClusterServiceAppFixture
 
 object ClusterServiceAppFixture extends App {
-  val prop = new SystemProperties
-  prop += ("akka.mode" -> "debug")
+  sys.props += ("akka.mode" -> "debug")
 
   ClusterService.run(port = 2552 + util.Random.nextInt(1000))
   EventHandler.debug(this, "Cluster Service Started")
@@ -97,17 +95,16 @@ class TestDataIO extends AbstractDataIO[Int, Int] with DataIOMaster[Int] {
 
 class ClusterServiceAcceptance extends FunSuite {
   test("cluster service acceptance test") {
-    val prop = new SystemProperties
-    prop += ("akka.mode" -> "debug")
+    sys.props += ("akka.mode" -> "debug")
 
     // Find the class loader of the ClusterService class, should be a
     // URLClassLoader so that we can get a working ClassPath
     val loader = classOf[ClusterServiceAppFixture].getClassLoader.asInstanceOf[URLClassLoader]
     // Read the system properties to get the information required to run the
     // JVM and construct the ClassPath.
-    val fsep = prop("file.separator")
-    val psep = prop("path.separator")
-    val path = prop("java.home") + fsep + "bin" + fsep + "java"
+    val fsep = sys.props("file.separator")
+    val psep = sys.props("path.separator")
+    val path = sys.props("java.home") + fsep + "bin" + fsep + "java"
     val classPath = loader.getURLs.map(_.getPath).reduceLeft(_ + psep + _)
     val mainClass = classOf[ClusterServiceAppFixture].getCanonicalName
 

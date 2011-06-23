@@ -87,8 +87,8 @@ given result:
 ## Pagerank (Akka)
 
     $ mkdir results
-    $ sbt 'project pagerank-akka-cs' 'set akka.mode serv1' 'run'
-    $ sbt 'project pagerank-akka-cs' 'set akka.mode serv2' 'run'
+    $ sbt 'project pagerank-akka' 'eval System.setProperty("akka.mode", "serv1")' 'run-main menthor.cluster.ClusterService'
+    $ sbt 'project pagerank-akka' 'eval System.setProperty("akka.mode", "serv2")' 'run-main menthor.cluster.ClusterService'
     $ sbt 'project pagerank-akka' 'run data/links-sorted-small.txt data/titles-sorted-small.txt results/ <pages> [iterations]'
 
 ## Hierarchical Clustering
