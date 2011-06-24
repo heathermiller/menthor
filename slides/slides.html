@@ -1,60 +1,340 @@
 <!DOCTYPE html>
 
 <meta charset="utf-8">
-<title>The Title Of Your Presentation</title>
+<title>Distributed Menthor – Semester Project</title>
 
 <!-- Your Slides -->
 <!-- One section is one slide -->
 
 <section>
-    <!-- This is the first slide -->
-    <h1>Foobar.</h1>
-    <footer>by John Doe</footer>
+  <hgroup>
+    <h1>Extending the Menthor Framework for Parallel Graph Processing to Distributed Computing</h1>
+    <h2>Semester Project Presentation</h2>
+  </hgroup>
+  <footer>by Georges Discry</footer>
 </section>
 
 <section>
-    <h2>Foo?</h2>
+  <h2>What is <strong>Menthor</strong>?</h2>
+  <ul>
+    <li>A framework</li>
+    <li>Used to implement parallel algorithms</li>
+    <li>The data is structured as a graph</li>
+    <li>The vertices are updated synchronously</li>
+  </ul>
 </section>
 
 <section>
-    <h3>No, bar!</h3>
-    <ul>
-        <li>Text
-        <li>Images
-        <li>Videos
-    </ul>
+  <h2>What is <strong>Menthor</strong>?</h2>
+  <center>
+<svg width="278pt" height="68pt"
+ viewBox="0.00 0.00 278.00 67.96" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph1" class="graph" transform="scale(1 1) rotate(0) translate(4 63.9581)">
+<title>_anonymous_0</title>
+<!-- v1 -->
+<g id="node2" class="node"><title>v1</title>
+<ellipse fill="none" stroke="white" cx="27" cy="-18" rx="27" ry="18"/>
+<text text-anchor="middle" x="27" y="-14.3" font-family="Times,serif" font-size="14.00" fill="white">v1</text>
+</g>
+<!-- v2 -->
+<g id="node4" class="node"><title>v2</title>
+<ellipse fill="none" stroke="white" cx="99" cy="-18" rx="27" ry="18"/>
+<text text-anchor="middle" x="99" y="-14.3" font-family="Times,serif" font-size="14.00" fill="white">v2</text>
+</g>
+<!-- v1&#45;&gt;v2 -->
+<g id="edge3" class="edge"><title>v1&#45;&gt;v2</title>
+<path fill="none" stroke="white" d="M54,-18C56.6147,-18 59.2295,-18 61.8442,-18"/>
+<polygon fill="white" stroke="white" points="61.9297,-21.5001 71.9297,-18 61.9297,-14.5001 61.9297,-21.5001"/>
+</g>
+<!-- v3 -->
+<g id="node5" class="node"><title>v3</title>
+<ellipse fill="none" stroke="white" cx="171" cy="-18" rx="27" ry="18"/>
+<text text-anchor="middle" x="171" y="-14.3" font-family="Times,serif" font-size="14.00" fill="white">v3</text>
+</g>
+<!-- v2&#45;&gt;v3 -->
+<g id="edge4" class="edge"><title>v2&#45;&gt;v3</title>
+<path fill="none" stroke="white" d="M126,-18C128.615,-18 131.229,-18 133.844,-18"/>
+<polygon fill="white" stroke="white" points="133.93,-21.5001 143.93,-18 133.93,-14.5001 133.93,-21.5001"/>
+</g>
+<!-- v4 -->
+<g id="node6" class="node"><title>v4</title>
+<ellipse fill="none" stroke="white" cx="243" cy="-18" rx="27" ry="18"/>
+<text text-anchor="middle" x="243" y="-14.3" font-family="Times,serif" font-size="14.00" fill="white">v4</text>
+</g>
+<!-- v2&#45;&gt;v4 -->
+<g id="edge7" class="edge"><title>v2&#45;&gt;v4</title>
+<path fill="none" stroke="white" d="M113.217,-33.5681C121.37,-41.3189 132.293,-49.8935 144,-54 166.647,-61.9442 175.353,-61.9442 198,-54 206.231,-51.1126 214.075,-46.0163 220.841,-40.5505"/>
+<polygon fill="white" stroke="white" points="223.584,-42.7996 228.783,-33.5681 218.962,-37.5426 223.584,-42.7996"/>
+</g>
+<!-- v3&#45;&gt;v1 -->
+<g id="edge9" class="edge"><title>v3&#45;&gt;v1</title>
+<path fill="none" stroke="white" d="M156.783,-33.5681C148.63,-41.3189 137.707,-49.8935 126,-54 103.353,-61.9442 94.6471,-61.9442 72,-54 63.7687,-51.1126 55.9246,-46.0163 49.1586,-40.5505"/>
+<polygon fill="white" stroke="white" points="51.0381,-37.5426 41.217,-33.5681 46.416,-42.7996 51.0381,-37.5426"/>
+</g>
+<!-- v3&#45;&gt;v4 -->
+<g id="edge5" class="edge"><title>v3&#45;&gt;v4</title>
+<path fill="none" stroke="white" d="M198,-18C200.615,-18 203.229,-18 205.844,-18"/>
+<polygon fill="white" stroke="white" points="205.93,-21.5001 215.93,-18 205.93,-14.5001 205.93,-21.5001"/>
+</g>
+</g>
+</svg>
+  </center>
+</section>
+
+<section>
+  <h2>What is <strong>Menthor</strong>?</h2>
+  <center>
+<svg width="316pt" height="168pt"
+ viewBox="0.00 0.00 316.00 168.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph1" class="graph" transform="scale(1 1) rotate(0) translate(4 164)">
+<title>_anonymous_0</title>
+<g id="graph2" class="cluster"><title>clusterW1</title>
+<polygon fill="none" stroke="white" points="8,-8 8,-114 150,-114 150,-8 8,-8"/>
+</g>
+<g id="graph3" class="cluster"><title>clusterW2</title>
+<polygon fill="none" stroke="white" points="158,-8 158,-114 300,-114 300,-8 158,-8"/>
+</g>
+<!-- G -->
+<g id="node1" class="node"><title>G</title>
+<ellipse fill="none" stroke="white" cx="154" cy="-142" rx="33.1991" ry="18"/>
+<text text-anchor="middle" x="154" y="-138.3" font-family="Times,serif" font-size="14.00" fill="white">Graph</text>
+</g>
+<!-- W1 -->
+<g id="node2" class="node"><title>W1</title>
+<ellipse fill="none" stroke="white" cx="100" cy="-88" rx="42.3701" ry="18"/>
+<text text-anchor="middle" x="100" y="-84.3" font-family="Times,serif" font-size="14.00" fill="white">Worker1</text>
+</g>
+<!-- G&#45;&#45;W1 -->
+<g id="edge2" class="edge"><title>G&#45;&#45;W1</title>
+<path fill="none" stroke="white" d="M138.381,-125.959C131.528,-119.36 123.478,-111.609 116.525,-104.913"/>
+</g>
+<!-- W2 -->
+<g id="node3" class="node"><title>W2</title>
+<ellipse fill="none" stroke="white" cx="208" cy="-88" rx="42.3701" ry="18"/>
+<text text-anchor="middle" x="208" y="-84.3" font-family="Times,serif" font-size="14.00" fill="white">Worker2</text>
+</g>
+<!-- G&#45;&#45;W2 -->
+<g id="edge4" class="edge"><title>G&#45;&#45;W2</title>
+<path fill="none" stroke="white" d="M169.619,-125.959C176.472,-119.36 184.522,-111.609 191.475,-104.913"/>
+</g>
+<!-- v1 -->
+<g id="node4" class="node"><title>v1</title>
+<polygon fill="none" stroke="white" points="70,-52 16,-52 16,-16 70,-16 70,-52"/>
+<text text-anchor="middle" x="43" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">v1</text>
+</g>
+<!-- W1&#45;&#45;v1 -->
+<g id="edge7" class="edge"><title>W1&#45;&#45;v1</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M82.8981,-71.3983C76.2085,-65.2954 68.5157,-58.2775 61.6812,-52.0425"/>
+</g>
+<!-- v2 -->
+<g id="node5" class="node"><title>v2</title>
+<polygon fill="none" stroke="white" points="142,-52 88,-52 88,-16 142,-16 142,-52"/>
+<text text-anchor="middle" x="115" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">v2</text>
+</g>
+<!-- W1&#45;&#45;v2 -->
+<g id="edge9" class="edge"><title>W1&#45;&#45;v2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M104.912,-69.9733C106.552,-64.2862 108.381,-57.9464 110.026,-52.243"/>
+</g>
+<!-- v3 -->
+<g id="node6" class="node"><title>v3</title>
+<polygon fill="none" stroke="white" points="220,-52 166,-52 166,-16 220,-16 220,-52"/>
+<text text-anchor="middle" x="193" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">v3</text>
+</g>
+<!-- W2&#45;&#45;v3 -->
+<g id="edge12" class="edge"><title>W2&#45;&#45;v3</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M203.088,-69.9733C201.448,-64.2862 199.619,-57.9464 197.974,-52.243"/>
+</g>
+<!-- v4 -->
+<g id="node7" class="node"><title>v4</title>
+<polygon fill="none" stroke="white" points="292,-52 238,-52 238,-16 292,-16 292,-52"/>
+<text text-anchor="middle" x="265" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">v4</text>
+</g>
+<!-- W2&#45;&#45;v4 -->
+<g id="edge14" class="edge"><title>W2&#45;&#45;v4</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M225.102,-71.3983C231.792,-65.2954 239.484,-58.2775 246.319,-52.0425"/>
+</g>
+</g>
+</svg>
+
+  </center>
+</section>
+
+<section>
+  <h2>Project <strong>Overview</strong></h2>
+  <ul>
+    <li><a href="https://github.com/heathermiller/menthor">https://github.com/heathermiller/menthor</a></li>
+    <li><code>distributed</code> branch</li>
+    <li>SBT</li>
+    <li>Akka Actors</li>
+  </ul>
+</section>
+
+<section>
+<h2>Design of the <strong>Distributed</strong> implementation</h2>
+<details><p>Mention the Supervisors and Fault Tolerance</p></details>
+  <center>
+<svg width="548pt" height="236pt"
+ viewBox="0.00 0.00 548.00 236.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph1" class="graph" transform="scale(1 1) rotate(0) translate(4 232)">
+<title>_anonymous_0</title>
+<g id="graph2" class="cluster"><title>clusterM</title>
+<polygon fill="none" stroke="white" points="228,-145 228,-220 312,-220 312,-145 228,-145"/>
+<text text-anchor="middle" x="270" y="-204.8" font-family="Times,serif" font-size="14.00" fill="white">Master</text>
+</g>
+<g id="graph3" class="cluster"><title>clusterN1</title>
+<polygon fill="none" stroke="white" points="8,-8 8,-137 266,-137 266,-8 8,-8"/>
+<text text-anchor="middle" x="137" y="-121.8" font-family="Times,serif" font-size="14.00" fill="white">Node1</text>
+</g>
+<g id="graph4" class="cluster"><title>clusterN2</title>
+<polygon fill="none" stroke="white" points="274,-8 274,-137 532,-137 532,-8 274,-8"/>
+<text text-anchor="middle" x="403" y="-121.8" font-family="Times,serif" font-size="14.00" fill="white">Node2</text>
+</g>
+<!-- MG -->
+<g id="node2" class="node"><title>MG</title>
+<ellipse fill="none" stroke="white" cx="270" cy="-171" rx="33.1991" ry="18"/>
+<text text-anchor="middle" x="270" y="-167.3" font-family="Times,serif" font-size="14.00" fill="white">Graph</text>
+</g>
+<!-- N1F -->
+<g id="node4" class="node"><title>N1F</title>
+<ellipse fill="none" stroke="white" cx="202" cy="-88" rx="53.4184" ry="18"/>
+<text text-anchor="middle" x="202" y="-84.3" font-family="Times,serif" font-size="14.00" fill="white">ForemanN1</text>
+</g>
+<!-- MG&#45;&#45;N1F -->
+<g id="edge17" class="edge"><title>MG&#45;&#45;N1F</title>
+<path fill="none" stroke="white" d="M256.889,-154.382C245.079,-140.315 227.78,-119.708 215.771,-105.404"/>
+</g>
+<!-- N2F -->
+<g id="node11" class="node"><title>N2F</title>
+<ellipse fill="none" stroke="white" cx="338" cy="-88" rx="53.4184" ry="18"/>
+<text text-anchor="middle" x="338" y="-84.3" font-family="Times,serif" font-size="14.00" fill="white">ForemanN2</text>
+</g>
+<!-- MG&#45;&#45;N2F -->
+<g id="edge19" class="edge"><title>MG&#45;&#45;N2F</title>
+<path fill="none" stroke="white" d="M283.111,-154.382C294.921,-140.315 312.22,-119.708 324.229,-105.404"/>
+</g>
+<!-- N1W1 -->
+<g id="node5" class="node"><title>N1W1</title>
+<ellipse fill="none" stroke="white" cx="72" cy="-34" rx="55.3436" ry="18"/>
+<text text-anchor="middle" x="72" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">WorkerN1&#45;1</text>
+</g>
+<!-- N1F&#45;&#45;N1W1 -->
+<g id="edge4" class="edge"><title>N1F&#45;&#45;N1W1</title>
+<path fill="none" stroke="white" d="M168.859,-73.7437C149.451,-65.9803 125.008,-56.2031 105.532,-48.4129"/>
+</g>
+<!-- N1W2 -->
+<g id="node6" class="node"><title>N1W2</title>
+<ellipse fill="none" stroke="white" cx="202" cy="-34" rx="55.3436" ry="18"/>
+<text text-anchor="middle" x="202" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">WorkerN1&#45;2</text>
+</g>
+<!-- N1F&#45;&#45;N1W2 -->
+<g id="edge6" class="edge"><title>N1F&#45;&#45;N1W2</title>
+<path fill="none" stroke="white" d="M202,-69.9733C202,-64.2862 202,-57.9464 202,-52.243"/>
+</g>
+<!-- N1W1&#45;&#45;N1W2 -->
+<g id="edge8" class="edge"><title>N1W1&#45;&#45;N1W2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M127.605,-34C133.902,-34 140.198,-34 146.495,-34"/>
+</g>
+<!-- N2W1 -->
+<g id="node12" class="node"><title>N2W1</title>
+<ellipse fill="none" stroke="white" cx="338" cy="-34" rx="55.3436" ry="18"/>
+<text text-anchor="middle" x="338" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">WorkerN2&#45;1</text>
+</g>
+<!-- N1W1&#45;&#45;N2W1 -->
+<g id="edge24" class="edge"><title>N1W1&#45;&#45;N2W1</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M104.472,-48.6345C117.155,-53.6046 131.994,-58.5247 146,-61 196.331,-69.8952 210.614,-69.5779 261,-61 275.663,-58.5037 291.252,-53.5129 304.54,-48.494"/>
+</g>
+<!-- N2W2 -->
+<g id="node13" class="node"><title>N2W2</title>
+<ellipse fill="none" stroke="white" cx="468" cy="-34" rx="55.3436" ry="18"/>
+<text text-anchor="middle" x="468" y="-30.3" font-family="Times,serif" font-size="14.00" fill="white">WorkerN2&#45;2</text>
+</g>
+<!-- N1W1&#45;&#45;N2W2 -->
+<g id="edge26" class="edge"><title>N1W1&#45;&#45;N2W2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M104.472,-48.6345C117.155,-53.6046 131.994,-58.5247 146,-61 200.051,-70.5527 338.928,-70.4365 393,-61 407.178,-58.5257 422.214,-53.6057 435.072,-48.6355"/>
+</g>
+<!-- N1W2&#45;&#45;N2W2 -->
+<g id="edge28" class="edge"><title>N1W2&#45;&#45;N2W2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M237.578,-48.0334C249.585,-52.0939 263.193,-55.9752 276,-58 302.339,-62.1645 369.678,-62.2715 396,-58 408.356,-55.9949 421.456,-52.173 433.047,-48.1587"/>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M233.561,-48.8251C247.987,-54.8136 265.507,-61.0093 282,-64 305.615,-68.2822 366.403,-68.3814 390,-64 405.977,-61.0335 422.903,-54.9205 436.891,-48.982"/>
+</g>
+<!-- N2F&#45;&#45;N2W1 -->
+<g id="edge11" class="edge"><title>N2F&#45;&#45;N2W1</title>
+<path fill="none" stroke="white" d="M338,-69.9733C338,-64.2862 338,-57.9464 338,-52.243"/>
+</g>
+<!-- N2F&#45;&#45;N2W2 -->
+<g id="edge13" class="edge"><title>N2F&#45;&#45;N2W2</title>
+<path fill="none" stroke="white" d="M371.141,-73.7437C390.549,-65.9803 414.992,-56.2031 434.468,-48.4129"/>
+</g>
+<!-- N2W1&#45;&#45;N1W2 -->
+<g id="edge21" class="edge"><title>N2W1&#45;&#45;N1W2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M282.353,-34C274.074,-34 265.795,-34 257.516,-34"/>
+</g>
+<!-- N2W1&#45;&#45;N2W2 -->
+<g id="edge15" class="edge"><title>N2W1&#45;&#45;N2W2</title>
+<path fill="none" stroke="white" stroke-dasharray="5,2" d="M393.605,-34C399.902,-34 406.198,-34 412.495,-34"/>
+</g>
+</g>
+</svg>
+  </center>
+</section>
+
+<section>
+  <h2>Setting up a Cluster <strong>Topology</strong></h2>
+  <details><p>Mention the serialization problems</p>
+  <p>Mention the locality of the ActorRefs</p></details>
+  <ul>
+    <li>Each node of the cluster runs a <code>ClusterService</code></li>
+    <li><code>ClusterService</code> creates a <code>Foreman</code> on the <code>GraphMaster</code>'s request</li>
+    <li><code>Foreman</code> creates the <code>Workesr</code></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Avoiding <strong>Race Conditions</strong> in the synchronization step</h2>
+  <p>Because of the latency of the messaging between the nodes, a <code>Next</code> message can arrive before the <code>Messages</code> of the current step.</p>
+  <p>Similarly, <code>Messages</code> can arrive before a <code>Worker</code> has been notified that the enxt step has started.</p>
+</section>
+
+<section>
+  <h2>Demonstration<br>The <strong>PageRank</strong> example</h2>
+</section>
+
+<section>
+  <h2>What's <strong>Next</strong>?</h2>
+  <ul>
+    <li>Akka 2.0</li>
+    <li>API Improvements</li>
+    <li>Performance Improvements</li>
+    <li>Vertices are Actors</li>
+  </ul>
+</section>
+
+<section>
+  <h2><strong>Questions</strong>?</h2>
 </section>
 
 <!-- Your Style -->
 <!-- Define the style of you presentation -->
 
-<!-- Maybe a font from http://www.google.com/webfonts ? -->
-<link href='http://fonts.googleapis.com/css?family=Oswald' rel='stylesheet'>
+<link href='http://fonts.googleapis.com/css?family=Molengo&v1' rel='stylesheet' type='text/css'>
 
 <style>
   html { background-color: black; }
-  body {background-color: white;}
-  /* A section is a slide. It's size is 800x600, and this will never change */
-  section {
-      /* The font from Google */
-      font-family: 'Oswald', arial, serif;
-      font-size: 2em;
-  }
-  h1, h2, h3 {
-      margin-top: 50px;
-      text-align: center;
-  }
-  ul {
-      margin-left: 200px;
-  }
   a { color: #FF0066; } a:hover {text-decoration: underline;}
   footer { position: absolute; bottom: 50px; right: 50px; }
+  strong {color: #FF0066}
+  body {
+      font-family: 'Oswald', arial, serif;
+      background-color: white;
+      color: white;
+      font-size: 2em;
+      background: #1C1C1C;
+      background-image: -moz-radial-gradient(center 45deg, #333 0%, #1C1C1C 50%);
+      background-image: -moz-radial-gradient(center 45deg, #333 0%, #1C1C1C 50%);
+  }
+
 
   /* Transition effect */
-  /* Feel free to change the transition effect for original
-     animations. See here:
-     https://developer.mozilla.org/en/CSS/CSS_transitions
-     How to use CSS3 Transitions: */
   section {
       -moz-transition: left 400ms linear 0s;
       -webkit-transition: left 400ms linear 0s;
@@ -62,13 +342,61 @@
       -ms-transition: left 400ms linear 0s;
       transition: left 400ms linear 0s;
   }
-
-  /* Before */
   section { left: -150%; }
-  /* Now */
   section[aria-selected] { left: 0; }
-  /* After */
   section[aria-selected] ~ section { left: +150% }
+
+  .chapter { background-color: black;}
+  .chapter h1 {line-height: 600px; vertical-align: middle; margin: 0; text-align: center; display: block}
+
+  h1 {
+      margin: 50px 100px 0 100px;
+      font-size: 50px;
+      text-shadow: 0px -1px 0px #000;
+      text-align: left;
+  }
+  h2 {
+      color: #FAE50B;
+      margin: 70px 0 0 0;
+      font-size: 40px;
+      text-align: center;
+  }
+  ul {
+      margin-top: 70px;
+      font-size: 35px;
+      text-align: right;
+      border-right: 4px solid white;
+      padding-right: 40px;
+      min-width: 310px;
+      margin-left: 50px;
+      display: inline-block;
+  }
+  q, p, svg {
+      margin: 50px auto 0 auto;
+      width: 500px;
+  }
+  q:after {content: ""}
+  q:before {content: ""}
+  q {
+      display: block;
+      margin-top: 140px;
+  }
+  video {
+      position: absolute;
+      top: 210px;
+      width: 260px;
+      left: 445px;
+      box-shadow: 0 0 10px black;
+  }
+  #arrow {
+      position: absolute;
+      top: 165px;
+      left: 460px;
+      font-size: 100px;
+      color: white;
+
+  }
+  li {list-style-type: none}
 </style>
 
 
@@ -123,21 +451,21 @@
       return;
     }
     if ( e.keyCode == 37 // left arrow
-      || e.keyCode == 33 // page up
+    || e.keyCode == 33 // page up
     ) {
       e.preventDefault();
       back();
     }
     if ( e.keyCode == 39 // right arrow
-      || e.keyCode == 34 // page down
+    || e.keyCode == 34 // page down
     ) {
       e.preventDefault();
       forward();
     }
 
     if ( e.keyCode == 32) { // space
-        e.preventDefault();
-        toggleContent();
+      e.preventDefault();
+      toggleContent();
     }
   }
 
@@ -173,30 +501,30 @@
     // setSlide(42)
     var r = /setSlide\((\d+)\)/.exec(msg);
     if (r) {
-        idx = r[1];
-        setSlide();
+      idx = r[1];
+      setSlide();
     }
   }
 
   /* If a Video is present in this new slide, play it.
-     If a Video is present in the previous slide, stop it. */
+  If a Video is present in the previous slide, stop it. */
 
   function toggleContent() {
     var s = document.querySelector("section[aria-selected]");
     if (s) {
-        var video = s.querySelector("video");
-        if (video) {
-            if (video.ended || video.paused) {
-                video.play();
-            } else {
-                video.pause();
-            }
+      var video = s.querySelector("video");
+      if (video) {
+        if (video.ended || video.paused) {
+          video.play();
+          } else {
+          video.pause();
         }
+      }
     }
   }
 
   /* If the user change the slide number in the URL bar, jump
-     to this slide. */
+  to this slide. */
 
   window.onhashchange = function(e) {
     var newidx = ~~window.location.hash.split("#")[1];
@@ -230,18 +558,18 @@
       next.setAttribute("aria-selected", "true");
       var video = next.querySelector("video");
       if (video) { video.play(); }
-    } else {
+      } else {
       console.warn("No such slide: " + idx);
       idx = 0;
       for (var i = 0; i < slides.length; i++) {
-          if (slides[i].hasAttribute("aria-selected")) {
-              idx = i + 1;
-          }
+        if (slides[i].hasAttribute("aria-selected")) {
+          idx = i + 1;
+        }
       }
     }
     window.location.hash = idx;
     for (var i = 0; i < friendWindows.length; i++) {
-        friendWindows[i].postMessage(JSON.stringify({method: "newslide", details: getDetails(idx), idx: idx}), document.location);
+      friendWindows[i].postMessage(JSON.stringify({method: "newslide", details: getDetails(idx), idx: idx}), document.location);
     }
   }
 </script>
