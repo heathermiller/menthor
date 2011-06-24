@@ -24,7 +24,7 @@ trait Vertex[Data] {
 
   def initialize() { }
 
-  implicit final def superstep: Superstep = worker.superstep
+  implicit final def step: StepCount = worker.stepcount
 
   protected final def incoming: List[Message[Data]] = worker.incoming(ref.uuid)
 

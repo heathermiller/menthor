@@ -87,7 +87,7 @@ case object NothingToDo extends WorkerMessage with CrunchMessage with WorkerStat
 sealed abstract class DataMessage extends Serializable
 
 object DataMessage {
-  def unapply(msg: DataMessage): Option[(Superstep,Uuid)] =
+  def unapply(msg: DataMessage): Option[(StepCount,Uuid)] =
     msg match {
       case _msg:Message[_] => Some((_msg.step, _msg.dest.uuid))
       case _msg:TransmitMessage[_] => Some((_msg.step, _msg.dest))
@@ -97,10 +97,10 @@ object DataMessage {
 
 case class Message[Data](dest: VertexRef, value: Data)(
   implicit val source: VertexRef,
-  implicit val step: Superstep
+  implicit val step: StepCount
 ) extends DataMessage
 
-case class TransmitMessage[Data](dest: Uuid, value: Data, source: (Uuid, Uuid), step: Superstep) extends DataMessage
+case class TransmitMessage[Data](dest: Uuid, value: Data, source: (Uuid, Uuid), step: StepCount) extends DataMessage
 
 sealed abstract class SetupMessage extends Serializable
 

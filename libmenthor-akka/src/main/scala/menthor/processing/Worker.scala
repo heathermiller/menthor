@@ -25,7 +25,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
   private var _totalNumVertices: Int = 0
 
-  private var _superstep: Superstep = 0
+  private var _stepcount: StepCount = 0
   
   private var output: DataIO[Data] = null
 
@@ -37,7 +37,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
 
   def totalNumVertices = _totalNumVertices
 
-  def superstep: Superstep = _superstep
+  def stepcount: StepCount = _stepcount
 
   def incoming(vUuid: Uuid) = mailbox(vUuid)
 
@@ -124,7 +124,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   }
 
   def processing(remaining: Int): Actor.Receive = {
-    case msg@DataMessage(step, duuid) if ((step >= superstep) && (vertices contains duuid)) =>
+    case msg@DataMessage(step, duuid) if ((step >= stepcount) && (vertices contains duuid)) =>
       assert(self.sender.isDefined)
       val message = msg match {
         case Message(dest, _) =>
@@ -133,7 +133,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           val value = _value.asInstanceOf[Data]
           Message(vertices(dest).ref, value)(new VertexRef(vuuid, wuuid, self.sender.get), step)
       }
-      if (step == superstep) {
+      if (step == stepcount) {
         mailbox(duuid) = message :: mailbox(duuid)
         if (remaining - 1 == 0) nextstep()
         else become(processing(remaining - 1))
@@ -156,10 +156,10 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
   }
 
   def dropMessages(remaining: Int): Actor.Receive = {
-    case _msg @ Message(dest, _) if ((_msg.step == superstep) && (vertices contains dest.uuid)) =>
+    case _msg @ Message(dest, _) if ((_msg.step == stepcount) && (vertices contains dest.uuid)) =>
       if (remaining - 1 == 0) self.stop()
       else become(dropMessages(remaining - 1))
-    case TransmitMessage(dest, _, _, step) if ((step == superstep) && (vertices contains dest)) =>
+    case TransmitMessage(dest, _, _, step) if ((step == stepcount) && (vertices contains dest)) =>
       if (remaining - 1 == 0) self.stop()
       else become(dropMessages(remaining - 1))
   }
@@ -168,14 +168,14 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
     case CrunchResult(_result) =>
       val result = _result.asInstanceOf[Data]
       for ((uuid, vertex) <- vertices) {
-        val msg = Message(vertex.ref, result)(null, superstep)
+        val msg = Message(vertex.ref, result)(null, stepcount)
         mailbox(uuid) = msg :: mailbox(uuid)
       }
       nextstep()
   }
 
   private def nextstep() {
-    _superstep += 1
+    _stepcount += 1
 
     var crunchsteps: List[CrunchStep[Data]] = Nil
     var substeps: List[Substep[Data]] = Nil
@@ -187,7 +187,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         substeps = substep.asInstanceOf[Substep[Data]] :: substeps
     }
     if (crunchsteps.nonEmpty && substeps.nonEmpty) {
-      throw new InvalidStepException("Mixing crunches and substeps at step [" + superstep + "]")
+      throw new InvalidStepException("Mixing crunches and substeps at step [" + stepcount + "]")
     } else if (crunchsteps.nonEmpty) {
       become(crunchResult)
       mailbox.clear()
@@ -196,7 +196,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
         val result = vertices.values.map(_.value) reduceLeft cruncher
         parent ! Crunch(cruncher, result)
       } catch {
-        case e => throw new ProcessingException("Cruncher application error at step [" + superstep + "]", e)
+        case e => throw new ProcessingException("Cruncher application error at step [" + stepcount + "]", e)
       }
       for (vertex <- vertices.values)
         vertex.moveToNextStep()
@@ -212,7 +212,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
           for (substep <- substeps)
             outgoing = outgoing ::: substep.stepfun()
         } catch {
-          case e => throw new ProcessingException("Substep execution error at step [" + superstep + "]", e)
+          case e => throw new ProcessingException("Substep execution error at step [" + stepcount + "]", e)
         }
 
         mailbox.clear()
@@ -228,7 +228,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
             w ! TransmitMessage(msg.dest.uuid, msg.value, (msg.source.uuid, self.uuid), msg.step)
         }
 
-        val (stepMessages, nextStepsMessages) = futureMessages.partition(_.step == superstep)
+        val (stepMessages, nextStepsMessages) = futureMessages.partition(_.step == stepcount)
         for (msg <- stepMessages)
           mailbox(msg.dest.uuid) = msg :: mailbox(msg.dest.uuid)
         futureMessages = nextStepsMessages
@@ -242,7 +242,7 @@ class Worker[Data: Manifest](val parent: ActorRef) extends Actor {
       } else {
         for (vertex <- vertices.values)
           vertex.moveToNextStep()
-        _superstep -= 1
+        _stepcount -= 1
         nextstep()
       }
     } else {
