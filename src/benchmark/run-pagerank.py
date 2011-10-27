@@ -16,11 +16,11 @@ javaargs="-Xmx4G -Xmx8G"
 out.write("JAVA OPTS: "+javaargs+"\n")
 
 #for numCores in [2] + range(3, 14, 2): # range(x,y,s) "from x to y-1 in steps of s"
-for numCores in [2,3,4,5]:
+for numCores in [2,3,4,5,6,7,8]:
     print "Running with %d cores..." % (numCores - 1)
     opts = javaargs + " -Dactors.corePoolSize=%d -Dactors.maxPoolSize=%d" % (numCores, numCores)
     os.putenv("JAVA_OPTS", opts)
-    out.write("#cores "+str(numCores)+"\t")
+    out.write("#cores "+str(numCores - 1)+"\t")
     
     for run in range(5):
         start = time()

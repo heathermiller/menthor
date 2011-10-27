@@ -1,9 +1,9 @@
 package menthor.akka
 
 import scala.collection.mutable.{ HashMap, Queue }
-
 import akka.actor.{ Actor, ActorRef }
 import akka.actor.Actor.actorOf
+import scala.collection.parallel.mutable.ParArray
 
 /*
  * @param graph      the graph for which the worker manages a partition of vertices
@@ -40,21 +40,37 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
     var crunch: Option[Crunch[Data]] = None
 
     //PAR This is the main thing that should be parallelized in the worker.
-    for (vertex <- partition) {
+    //    partition.foreach({ vertex =>
+    partition.foreach({ vertex =>
+      
+      //FIXME too much overhead through copying around data!
+      //Directly create the partitions...
+
       val substeps = vertex.update(step - 1, incoming(vertex))
       //println("#substeps = " + substeps.size)
       val substep = substeps((step - 1) % substeps.size)
 
-      if (substep.isInstanceOf[CrunchStep[Data]]) { // 			If we have a crunch step...
+      ///////////////////////////////////////////////////////////
+      // If we have a crunch step...
+      ///////////////////////////////////////////////////////////
+      if (substep.isInstanceOf[CrunchStep[Data]]) {
         val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
         // assume every vertex has crunch step at this point
         if (vertex == partition(0)) {
           // compute aggregated value
-          val vertexValues = partition.map(v => v.value)
+
+          //PAR added .par. here but might not be necessary
+          //          val vertexValues = partition.map(v => v.value)
+          val vertexValues = partition.par.map(v => v.value)
+
           val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
           crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
         }
-      } else { //											 	Normal substep...
+      }
+      ///////////////////////////////////////////////////////////
+      // Normal substep...
+      ///////////////////////////////////////////////////////////
+      else {
         //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
         val outgoing = substep.stepfun()
         // set step field of outgoing messages to current step
@@ -69,10 +85,11 @@ class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Grap
         //println(this + ": sending Stop to " + parent)
         parent ! "Stop"
         //exit()
-        //        println(self + ": we'd like to stop now")
+        //println(self + ": we'd like to stop now")
         self.stop()
       }
-    }
+    })
+
     incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
       override def default(v: Vertex[Data]) = List()
     }

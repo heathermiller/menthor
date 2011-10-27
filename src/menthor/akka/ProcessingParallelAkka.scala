@@ -126,9 +126,14 @@ case class StartPropagation(numIterations: Int, latch: CountDownLatch)
 // TODO: maintain mapping from vertex to the worker which manages the vertex,
 // do this using worker field of Vertex
 class Graph[Data] extends actor.Actor {
+  
+  //PAR make this a parallel collection ParArray
+  // GenSeq is a common supertype of par and non-par sequences
   var vertices: List[Vertex[Data]] = List()
   var workers: List[ActorRef] = List()
   var allForemen: List[ActorRef] = List()
+
+  var singleVertexGraph = false //TODO Feed this in...
 
   var cond: () => Boolean = () => false
 
@@ -142,10 +147,16 @@ class Graph[Data] extends actor.Actor {
 
   def createWorkers(graphSize: Int) {
     val numProcs = Runtime.getRuntime().availableProcessors()
+    println("Available processors: " + numProcs)
 
-    if (graphSize % numProcs == 0) {
-      val partitionSize: Int = graphSize / numProcs
+    //FIXME this condition was rubbish!
+    //    if (graphSize % numProcs == 0) {
+    if (!singleVertexGraph) {
+      // Figure out correct partition size for vertex distribution...
+      val partitionSize: Int = if (graphSize % numProcs == 0) { graphSize / numProcs } else { (graphSize / numProcs) + 1 }
       val partitions = vertices.grouped(partitionSize)
+      println("Creating workers per partitions. Partition size = " + partitionSize)
+
       for (partition <- partitions) {
         val worker = actorOf(new Worker(self, partition, this))
         workers ::= worker
@@ -154,6 +165,7 @@ class Graph[Data] extends actor.Actor {
         worker.start()
       }
     } else {
+      println("Creating one worker per vertex.")
       // create one worker per vertex
       for (v <- vertices) {
         val worker = actorOf(new Worker(self, List(v), this))

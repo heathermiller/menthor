@@ -20,11 +20,11 @@ for numCores in [2,3,4,5]:
     print "Running with %d cores..." % (numCores - 1)
     opts = javaargs + " -Dactors.corePoolSize=%d -Dactors.maxPoolSize=%d" % (numCores, numCores)
     os.putenv("JAVA_OPTS", opts)
-    out.write("#cores "+str(numCores)+"\t")
+    out.write("#cores "+str(numCores - 1)+"\t")
     
     for run in range(5):
         start = time()
-        cmd = "time scala -cp bin processing.parallel.PageRank 30 data/ %s" % inputSize
+        cmd = "time scala -cp bin processing.parallel.PageRank 30 data-large/ %s" % inputSize
         print 'running command: %s' % cmd
 
         os.system(cmd)
