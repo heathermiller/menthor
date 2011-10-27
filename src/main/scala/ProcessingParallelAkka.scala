@@ -143,9 +143,12 @@ class Graph[Data] extends actor.Actor {
   def createWorkers(graphSize: Int) {
     val numProcs = Runtime.getRuntime().availableProcessors()
 
-    if (graphSize % numProcs == 0) {
-      val partitionSize: Int = graphSize / numProcs
+    if (!singleVertexGraph) {
+      // Figure out correct partition size for vertex distribution...
+      val partitionSize: Int = if (graphSize % numProcs == 0) { graphSize / numProcs } else { (graphSize / numProcs) + 1 }
       val partitions = vertices.grouped(partitionSize)
+      println("Creating workers per partitions. Partition size = " + partitionSize)
+
       for (partition <- partitions) {
         val worker = actorOf(new Worker(self, partition, this))
         workers ::= worker
@@ -154,7 +157,7 @@ class Graph[Data] extends actor.Actor {
         worker.start()
       }
     } else {
-      // create one worker per vertex
+      println("Creating one worker per vertex.")
       for (v <- vertices) {
         val worker = actorOf(new Worker(self, List(v), this))
         workers ::= worker
