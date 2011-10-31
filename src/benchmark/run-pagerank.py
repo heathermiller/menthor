@@ -24,7 +24,7 @@ for numCores in [2,3,4,5,6,7,8]:
     
     for run in range(5):
         start = time()
-        cmd = "time scala -cp bin processing.parallel.PageRank 30 data-large/ %s" % inputSize
+        cmd = "time scala -cp bin menthor.basic.PageRank 30 data-large/ %s" % inputSize
         print 'running command: %s' % cmd
 
         os.system(cmd)

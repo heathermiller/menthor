@@ -41,39 +41,38 @@ trait TicToc {
    * @param path
    */
   def writeTimesLog(path: String) {
-    printToFile(new File(path))(p => {
-      p.println("Timings of " + this.getClass())
-      p.println(stringf("descr:", "time(ms):"))
-      times.foreach(t => p.println(stringf(t._1, t._2.toString())))
-    })
+    var linesToPrint = outLines
+    try {
+      // Check if the file was alreay created, if yes only 
+      // append the timings not the timing information.
+      val lr = new LineNumberReader(new FileReader(path))
+      val read = lr.readLine()
+      if (null != read && read.startsWith("Timings")) {
+        linesToPrint = linesToPrint.drop(2)
+      }
+      lr.close()
+    } catch {
+      case _ =>
+    }
+    // Write the timings and or timing information.
+    val fw = new FileWriter(path, true);
+    linesToPrint.foreach { l => fw.write(l+"\n"); }
+    fw.close()
   }
 
   /**
    * Print the logged times.
    */
   def printTimesLog() {
-    println("Timings of " + this.getClass())
-    println(stringf("descr:", "time(ms):"))
-    times.foreach(t => println(stringf(t._1, t._2.toString())))
+    outLines.foreach { l => println(l); }
   }
 
-  /**
-   * Helper method for writing to files.
-   * @param f
-   * @param op
-   */
-  private def printToFile(f: java.io.File)(op: java.io.PrintWriter => Unit) {
-    val p = new java.io.PrintWriter(f)
-    try { op(p) } finally { p.close() }
+  def outLines(): List[String] = {
+    var list = List[String]()
+    list ::= ("Timings of " + this.getClass().toString())
+    list ::= "description:" + times.map(x => "\t" + x._1).reduce(_ + _)
+    list ::= "times(ms):" + times.map(x => "\t" + x._2).reduce(_ + _)
+    list.reverse
   }
 
-  /**
-   * Defines a format string for the output of timings and their descriptions.
-   * @param s
-   * @param t
-   * @return
-   */
-  private def stringf(s: String, t: String): String = {
-    "%-20s%-20s".format(s, t)
-  }
 }

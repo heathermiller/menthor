@@ -4,12 +4,13 @@ import scala.collection.mutable.{ HashMap, Queue }
 import akka.actor.{ Actor, ActorRef }
 import akka.actor.Actor.actorOf
 import scala.collection.parallel.mutable.ParArray
+import scala.collection.GenSeq
 
 /*
  * @param graph      the graph for which the worker manages a partition of vertices
  * @param partition  the list of vertices that this worker manages
  */
-class Worker[Data](parent: ActorRef, partition: List[Vertex[Data]], global: Graph[Data]) extends Actor {
+class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Graph[Data]) extends Actor {
   var numSubsteps = 0
   var step = 0
 

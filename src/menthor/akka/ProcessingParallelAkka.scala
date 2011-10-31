@@ -2,12 +2,13 @@ package menthor.akka
 
 import scala.collection.mutable.{ Map, HashMap }
 import scala.collection.mutable.ListBuffer
-
 import akka.actor
 import actor.ActorRef
 import actor.Actor.actorOf
-
 import java.util.concurrent.CountDownLatch
+import sun.reflect.generics.reflectiveObjects.NotImplementedException
+import scala.collection.GenSeq
+import scala.collection.parallel.mutable.ParArray
 
 // step: the step in which the message was produced
 // TODO: for distribution need to change Vertex[Data] into vertex ID
@@ -123,57 +124,82 @@ object Graph {
 // Message type to indicate to graph that it should start propagation
 case class StartPropagation(numIterations: Int, latch: CountDownLatch)
 
-// TODO: maintain mapping from vertex to the worker which manages the vertex,
-// do this using worker field of Vertex
+sealed case class GraphOperatingMode
+/** Only one global worker, this is suitable for parallel collections */
+case object SingleWorkerMode extends GraphOperatingMode
+/** As many workers as there are processors available */
+case object MultiWorkerMode extends GraphOperatingMode
+/** As many workers as there are vertices */
+case object IAmLegionMode extends GraphOperatingMode
+
 class Graph[Data] extends actor.Actor {
-  
-  //PAR make this a parallel collection ParArray
-  // GenSeq is a common supertype of par and non-par sequences
-  var vertices: List[Vertex[Data]] = List()
+
+  var vertices: GenSeq[Vertex[Data]] = List()
   var workers: List[ActorRef] = List()
   var allForemen: List[ActorRef] = List()
-
-  var singleVertexGraph = false //TODO Feed this in...
-
+  var opmode: GraphOperatingMode = SingleWorkerMode
   var cond: () => Boolean = () => false
-
   //Debug.level = 3
 
   def addVertex(v: Vertex[Data]): Vertex[Data] = {
     v.graph = this
-    vertices = v :: vertices
+    // vertices = v :: vertices
+    vertices = v +: vertices
     v
+  }
+  
+  def setOpMode(op:GraphOperatingMode) = {
+    this.opmode = op
   }
 
   def createWorkers(graphSize: Int) {
     val numProcs = Runtime.getRuntime().availableProcessors()
     println("Available processors: " + numProcs)
 
-    //FIXME this condition was rubbish!
-    //    if (graphSize % numProcs == 0) {
-    if (!singleVertexGraph) {
-      // Figure out correct partition size for vertex distribution...
-      val partitionSize: Int = if (graphSize % numProcs == 0) { graphSize / numProcs } else { (graphSize / numProcs) + 1 }
-      val partitions = vertices.grouped(partitionSize)
-      println("Creating workers per partitions. Partition size = " + partitionSize)
+    opmode match {
+      case SingleWorkerMode => {
+        println("Creating a single worker. Graph size = " + graphSize)
 
-      for (partition <- partitions) {
-        val worker = actorOf(new Worker(self, partition, this))
+        val worker = actorOf(new Worker(self, vertices, this))
         workers ::= worker
-        for (v <- partition)
+        for (v <- vertices)
           v.worker = worker
         worker.start()
       }
-    } else {
-      println("Creating one worker per vertex.")
-      // create one worker per vertex
-      for (v <- vertices) {
-        val worker = actorOf(new Worker(self, List(v), this))
-        workers ::= worker
-        v.worker = worker
-        worker.start()
+      case MultiWorkerMode => {
+        val partitionSize: Int = if (graphSize % numProcs == 0) { graphSize / numProcs } else { (graphSize / numProcs) + 1 }
+        println("Creating workers per partitions. Partition size = " + partitionSize)
+        var partitions: List[GenSeq[Vertex[Data]]] = List()
+
+        var startOffset = 0
+        var endOffset = partitionSize
+        while (startOffset < vertices.size) {
+          partitions = vertices.slice(startOffset, endOffset) :: partitions
+          startOffset = endOffset
+          endOffset = Math.min(endOffset + partitionSize, vertices.size)
+        }
+
+        for (partition <- partitions) {
+          val worker = actorOf(new Worker(self, partition, this))
+          workers ::= worker
+          for (v <- partition)
+            v.worker = worker
+          worker.start()
+        }
       }
+      case IAmLegionMode => {
+        println("Creating one worker per vertex. #workers = graph size = " + graphSize)
+        // create one worker per vertex
+        for (v <- vertices) {
+          val worker = actorOf(new Worker(self, List(v), this))
+          workers ::= worker
+          v.worker = worker
+          worker.start()
+        }
+      }
+      case _ => throw new IllegalArgumentException("Unknown graph operating mode.")
     }
+
     allForemen = workers
   }
 
