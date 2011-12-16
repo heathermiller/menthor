@@ -10,16 +10,19 @@ import sun.reflect.generics.reflectiveObjects.NotImplementedException
 import scala.collection.GenSeq
 import scala.collection.parallel.mutable.ParArray
 
-// step: the step in which the message was produced
-// TODO: for distribution need to change Vertex[Data] into vertex ID
 case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
+  // TODO: for distribution need to change Vertex[Data] into vertex ID
   /* Superstep in which message was created.
    * TODO: step does not need to be visible in user code!
    */
+  // step: the step in which the message was produced
   var step: Int = 0
 }
 
-// each Substep has a substep function and a reference to the previous Substep
+/**
+ * Each Substep has a substep function and a reference to the previous Substep
+ * @param <Data>
+ */
 class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Substep[Data]) {
   var next: Substep[Data] = null
 
@@ -71,32 +74,23 @@ class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Subste
 }
 
 class CrunchStep[Data](val cruncher: (Data, Data) => Data, previous: Substep[Data]) extends Substep[Data](null, previous)
-
 case class Crunch[Data](val cruncher: (Data, Data) => Data, val crunchResult: Data)
-
 case class CrunchResult[Data](res: Data)
 
-// To point out in paper: it's not a DSL for expressing/constructing/transforming graphs,
-// but rather a high-level API for graph /processing/.
+/**
+ * An abstract vertex in the graph which is to be processed by Menthor.
+ * @param <Data>
+ */
 abstract class Vertex[Data](val label: String, initialValue: Data) {
   // TODO: subclasses should not be able to mutate the list!
   var neighbors: List[Vertex[Data]] = List()
-
   var value: Data = initialValue
-
   var graph: Graph[Data] = null
 
   // graph has to initialize `worker` upon partitioning the list of vertices
   // TODO: should not be accessible from subclasses!
   var worker: ActorRef = null
 
-  /*
-   * { ...
-   *   List()
-   * } then {
-   *   ...
-   * }
-   */
   implicit def mkSubstep(block: => List[Message[Data]]) =
     new Substep(() => block, null)
 
@@ -121,45 +115,84 @@ object Graph {
   }
 }
 
-// Message type to indicate to graph that it should start propagation
+/** Message type to indicate to graph that it should start propagation */
 case class StartPropagation(numIterations: Int, latch: CountDownLatch)
 
+/**
+ * The {GraphOperatingMode} defines how many local parallel workers
+ * are to be created by the graph.
+ * @author fgysin
+ */
 sealed case class GraphOperatingMode
 /** Only one global worker, this is suitable for parallel collections */
 case object SingleWorkerMode extends GraphOperatingMode
 /** As many workers as there are processors available */
 case object MultiWorkerMode extends GraphOperatingMode
+/**
+ * As many workers as specified by the user
+ * FixedWorkerMode is mainly for testin/debugging/benchmarking purposes
+ */
+case class FixedWorkerMode(noOfWorkers: Int) extends GraphOperatingMode
 /** As many workers as there are vertices */
 case object IAmLegionMode extends GraphOperatingMode
 
+/**
+ * The main actor instance in a Menthor graph computation. The graph is the
+ * parent of all graph workers.
+ * @param <Data>
+ */
 class Graph[Data] extends actor.Actor {
 
-  var vertices: GenSeq[Vertex[Data]] = List()
+  /**
+   * If one would wish to turn off parallel collections make the following collection a List.
+   */
+  var vertices: GenSeq[Vertex[Data]] = ParArray()
+  //  var vertices: GenSeq[Vertex[Data]] = List()
   var workers: List[ActorRef] = List()
   var allForemen: List[ActorRef] = List()
   var opmode: GraphOperatingMode = SingleWorkerMode
   var cond: () => Boolean = () => false
-  //Debug.level = 3
+  var crunchResult: Option[Data] = None
+  var shouldFinish = false
+  var i = 1
+  var numIterations = 0
+  var numDone = 0
+  var numTotal: Int = workers.size
+  var cruncher: Option[(Data, Data) => Data] = None
+  var workerResults: List[Data] = List()
+  var numRecv = 0
+  var parent: CountDownLatch = null
 
+  /**
+   * Add a vertex to this graph.
+   * @param v Vertex to add.
+   * @return
+   */
   def addVertex(v: Vertex[Data]): Vertex[Data] = {
     v.graph = this
-    // vertices = v :: vertices
     vertices = v +: vertices
     v
   }
-  
-  def setOpMode(op:GraphOperatingMode) = {
+
+  /**
+   * Set the operating mode for this graph defining the number of parallel (local) workers.
+   * @param op
+   */
+  def setOpMode(op: GraphOperatingMode) = {
     this.opmode = op
   }
 
-  def createWorkers(graphSize: Int) {
+  /**
+   * Create number of workers depending on the graph operating mode.
+   * @param graphSize
+   */
+  def createWorkers() {
     val numProcs = Runtime.getRuntime().availableProcessors()
     println("Available processors: " + numProcs)
 
     opmode match {
       case SingleWorkerMode => {
-        println("Creating a single worker. Graph size = " + graphSize)
-
+        println("Creating a single worker. partition size = graph size = " + vertices.size)
         val worker = actorOf(new Worker(self, vertices, this))
         workers ::= worker
         for (v <- vertices)
@@ -167,18 +200,19 @@ class Graph[Data] extends actor.Actor {
         worker.start()
       }
       case MultiWorkerMode => {
-        val partitionSize: Int = if (graphSize % numProcs == 0) { graphSize / numProcs } else { (graphSize / numProcs) + 1 }
-        println("Creating workers per partitions. Partition size = " + partitionSize)
-        var partitions: List[GenSeq[Vertex[Data]]] = List()
-
-        var startOffset = 0
-        var endOffset = partitionSize
-        while (startOffset < vertices.size) {
-          partitions = vertices.slice(startOffset, endOffset) :: partitions
-          startOffset = endOffset
-          endOffset = Math.min(endOffset + partitionSize, vertices.size)
+        println("Creating one worker per core. #workers = " + numProcs)
+        var partitions: List[GenSeq[Vertex[Data]]] = partitionData(vertices, numProcs)
+        for (partition <- partitions) {
+          val worker = actorOf(new Worker(self, partition, this))
+          workers ::= worker
+          for (v <- partition)
+            v.worker = worker
+          worker.start()
         }
-
+      }
+      case FixedWorkerMode(fixedWorkerNo: Int) => {
+        println("Creating fixed number of workers: " + fixedWorkerNo)
+        var partitions: List[GenSeq[Vertex[Data]]] = partitionData(vertices, fixedWorkerNo)
         for (partition <- partitions) {
           val worker = actorOf(new Worker(self, partition, this))
           workers ::= worker
@@ -188,8 +222,7 @@ class Graph[Data] extends actor.Actor {
         }
       }
       case IAmLegionMode => {
-        println("Creating one worker per vertex. #workers = graph size = " + graphSize)
-        // create one worker per vertex
+        println("Creating one worker per vertex. #workers = graph size = " + vertices.size)
         for (v <- vertices) {
           val worker = actorOf(new Worker(self, List(v), this))
           workers ::= worker
@@ -203,82 +236,30 @@ class Graph[Data] extends actor.Actor {
     allForemen = workers
   }
 
-  /*
-  def createWorkers() {
-    val numChildren = 4
-    val numWorkers = 48
+  /**
+   * This is creating partitions without relying on API that is not provided by GenSeq.
+   * @param data General collection of graph vertices to partition.
+   * @param n Number of partitions.
+   * @return List of partitions.
+   */
+  def partitionData(data: GenSeq[Vertex[Data]], n: Int): List[GenSeq[Vertex[Data]]] = {
+    val partitionSize: Int = if (data.size % n == 0) { data.size / n } else { (data.size / n) + 1 }
+    var partitions: List[GenSeq[Vertex[Data]]] = List()
 
-    val topLevel = (for (i <- 1 to 3) yield {
-      val f = new Foreman(this, List())
-      workers = f :: workers
-      f
-    }).toList
-
-    val listOfMidLevels = for (foreman <- topLevel) yield {
-      val midLevel: List[Foreman] =
-        (for (i <- 1 to numChildren) yield new Foreman(foreman, List())).toList
-      foreman.children = midLevel
-      midLevel
+    var startOffset = 0
+    var endOffset = partitionSize
+    while (startOffset < vertices.size) {
+      partitions = vertices.slice(startOffset, endOffset) :: partitions
+      startOffset = endOffset
+      endOffset = Math.min(endOffset + partitionSize, vertices.size)
     }
 
-    val midLevel = listOfMidLevels.flatten
-    allForemen = topLevel ::: midLevel
-
-    // partition set of vertices into numWorkers partitions
-    val sizeOfMostPartitions = (vertices.size.toDouble / numWorkers.toDouble).floor.toInt
-    val tooManyPartitions = vertices.grouped(sizeOfMostPartitions).toList
-    var additionalPartitions = tooManyPartitions.drop(numWorkers)
-    val actualPartitions = tooManyPartitions.take(numWorkers)
-
-    val partitions = for (part <- actualPartitions) yield {
-      if (additionalPartitions.isEmpty)
-        part
-      else {
-        val additionalPart = additionalPartitions.head
-        additionalPartitions = additionalPartitions.tail
-        part ::: additionalPart
-      }
-    }
-
-/*
-    val partitionSize = {
-      val tmp = (vertices.size.toDouble / numWorkers.toDouble).ceil.toInt
-      if (tmp == 0) 1 else tmp
-    }
-    println("partition size: " + partitionSize)
-    val partitions = vertices.grouped(partitionSize).toList
-*/
-    //println("#partitions: " + partitions.size)
-
-    var partition: List[Vertex[Data]] = List()
-    for (i <- 0 until 12; j <- 0 until 4) {
-      partition = partitions(i * 4 + j)
-      val worker = new Worker(midLevel(i), partition, this)
-      midLevel(i).children = worker :: midLevel(i).children
-      allForemen ::= worker
-
-      for (vertex <- partition) {
-        vertex.worker = worker
-      }
-      worker.start()
-    }
-
-    for (f <- midLevel) { f.start() }
-    for (f <- topLevel) { f.start() }
+    partitions
   }
-*/
 
-  var crunchResult: Option[Data] = None
-  var shouldFinish = false
-  var i = 1
-  var numIterations = 0
-
-  var numDone = 0
-  var numTotal: Int = workers.size
-
-  var cruncher: Option[(Data, Data) => Data] = None
-  var workerResults: List[Data] = List()
-
+  /**
+   * Start the next iteration.
+   */
   def nextIter() {
     numRecv = 0
 
@@ -292,8 +273,6 @@ class Graph[Data] extends actor.Actor {
 
     } else if ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
       i += 1
-      // 0 superstep: i == 2
-      // 1 superstep: i == 3
 
       if (!crunchResult.isEmpty) {
         for (w <- workers) { // go to next superstep
@@ -313,25 +292,23 @@ class Graph[Data] extends actor.Actor {
       workerResults = List()
     } else {
 
-      // ?
-
       parent.countDown()
     }
   }
 
-  var numRecv = 0
-  var parent: CountDownLatch = null
-
+  /* (non-Javadoc)
+   * @see akka.actor.Actor#receive()
+   */
   def receive = {
     case "Stop" =>
-      //exit()
       println(self + ": we'd like to stop now")
       self.stop()
 
     case StartPropagation(numIters, from) =>
+      // This is called on start...
       parent = from
       numIterations = numIters
-      createWorkers(vertices.size)
+      createWorkers
 
       become {
         case "Stop" => // stop iterating
@@ -351,8 +328,6 @@ class Graph[Data] extends actor.Actor {
         case "Done" =>
           numRecv += 1
           numDone += 1
-          //if ((numDone % (numTotal / 20)) == 0)
-          //  print("#")
 
           if (numRecv == workers.size) {
             // are we inside a crunch step?
@@ -364,7 +339,6 @@ class Graph[Data] extends actor.Actor {
             nextIter()
           }
       }
-      //println(".")
 
       nextIter()
   }
@@ -387,6 +361,10 @@ class Graph[Data] extends actor.Actor {
   }
 }
 
+//////////////////////////////////////////////////////////////////////////////
+// Tests
+//////////////////////////////////////////////////////////////////////////////
+
 object Test1 {
   var count = 0
   def nextcount: Int = {
@@ -403,12 +381,6 @@ class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
     }
   }
 }
-
-//, (res: Double, vertices: (Vertex, Vertex)) => {
-// (T, (Vertex, Vertex)) => List[Message[Data]]
-
-// (Vertex, Vertex) => (T, (Vertex, Vertex))
-//(v1.value + v2.value, (v1, v2))
 
 class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
   def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {

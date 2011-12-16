@@ -4,6 +4,11 @@ package benchmark
  * TicToc allows for easy benchmarking of different parts in source code.
  * Just inherit the TicToc trait, then start a time measurement with tic,
  * and stop it using toc.
+ * As of now tic-tocs can be nested but can not overlap, as the underlying
+ * data structure is a stack: a toc always terminates the last tic.
+ * The reason for this decision was that the TicToc trait and its methods
+ * should be as lightweight as possible in order not to falsify the measured
+ * run times.
  * @author fgysin
  */
 trait TicToc {
@@ -37,8 +42,11 @@ trait TicToc {
   }
 
   /**
-   * Write the logged times to a file.
-   * @param path
+   * Write the logged times to a file. There is some formatting sugar contained
+   * that checks if a file with this name already exists. If yes, the run times
+   * are added at the bottom of the existing file (this is useful if you repeat
+   * the same measurement multiple times), else the file is created.
+   * @param path The path of the file to write the times log.
    */
   def writeTimesLog(path: String) {
     var linesToPrint = outLines
@@ -56,7 +64,7 @@ trait TicToc {
     }
     // Write the timings and or timing information.
     val fw = new FileWriter(path, true);
-    linesToPrint.foreach { l => fw.write(l+"\n"); }
+    linesToPrint.foreach { l => fw.write(l + "\n"); }
     fw.close()
   }
 
@@ -67,6 +75,10 @@ trait TicToc {
     outLines.foreach { l => println(l); }
   }
 
+  /**
+   * String output of the current times and their respective descriptions.
+   * @return
+   */
   def outLines(): List[String] = {
     var list = List[String]()
     list ::= ("Timings of " + this.getClass().toString())

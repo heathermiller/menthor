@@ -6,23 +6,24 @@ import akka.actor.Actor.actorOf
 import scala.collection.parallel.mutable.ParArray
 import scala.collection.GenSeq
 
-/*
+/**
  * @param graph      the graph for which the worker manages a partition of vertices
  * @param partition  the list of vertices that this worker manages
  */
 class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Graph[Data]) extends Actor {
+  val queue = new Queue[Message[Data]]
+  val later = new Queue[Message[Data]]
   var numSubsteps = 0
   var step = 0
-
   var id = Graph.nextId
 
   var incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
     override def default(v: Vertex[Data]) = List()
   }
 
-  val queue = new Queue[Message[Data]]
-  val later = new Queue[Message[Data]]
-
+  /**
+   * Perform a superstep on the data held by this worker.
+   */
   def superstep() {
     // remove all application-level messages from mailbox
     while (!queue.isEmpty) {
@@ -39,57 +40,58 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
 
     var allOutgoing: List[Message[Data]] = List()
     var crunch: Option[Crunch[Data]] = None
+    var outgoingPerVertex: Array[List[Message[Data]]] = Array.fill[List[Message[Data]]](partition.size)(Nil)
 
-    //PAR This is the main thing that should be parallelized in the worker.
-    //    partition.foreach({ vertex =>
-    partition.foreach({ vertex =>
-      
-      //FIXME too much overhead through copying around data!
-      //Directly create the partitions...
+    /*
+     * This is the main thing that is parallelized in the worker.
+     */
+    partition.zipWithIndex.foreach({
+      case (vertex, i) =>
 
-      val substeps = vertex.update(step - 1, incoming(vertex))
-      //println("#substeps = " + substeps.size)
-      val substep = substeps((step - 1) % substeps.size)
+        val substeps = vertex.update(step - 1, incoming(vertex))
+        val substep = substeps((step - 1) % substeps.size)
 
-      ///////////////////////////////////////////////////////////
-      // If we have a crunch step...
-      ///////////////////////////////////////////////////////////
-      if (substep.isInstanceOf[CrunchStep[Data]]) {
-        val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
-        // assume every vertex has crunch step at this point
-        if (vertex == partition(0)) {
-          // compute aggregated value
+        ///////////////////////////////////////////////////////////
+        // If we have a crunch step...
+        ///////////////////////////////////////////////////////////
+        if (substep.isInstanceOf[CrunchStep[Data]]) {
+          val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
+          // assume every vertex has crunch step at this point
+          if (vertex == partition(0)) {
+            // compute aggregated value
 
-          //PAR added .par. here but might not be necessary
-          //          val vertexValues = partition.map(v => v.value)
-          val vertexValues = partition.par.map(v => v.value)
+            // The .par call here is not doing anything, as partition is already
+            // a parallel collection. It does however change the resulting type.
+            val vertexValues = partition.par.map(v => v.value)
 
-          val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
-          crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
+            val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
+            crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
+          }
+        } ///////////////////////////////////////////////////////////
+        // Normal substep...
+        ///////////////////////////////////////////////////////////
+        else {
+          //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
+          val outgoing = substep.stepfun()
+          // set step field of outgoing messages to current step
+          for (out <- outgoing) out.step = step
+
+          // This is a concurrent non-locking way to collect all our messages...
+          outgoingPerVertex(i) = outgoing
+
         }
-      }
-      ///////////////////////////////////////////////////////////
-      // Normal substep...
-      ///////////////////////////////////////////////////////////
-      else {
-        //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
-        val outgoing = substep.stepfun()
-        // set step field of outgoing messages to current step
-        for (out <- outgoing) out.step = step
-        allOutgoing = allOutgoing ::: outgoing
-      }
 
-      // only worker which manages the first vertex evaluates
-      // the termination condition
-      //if (vertex == parent.vertices(0) && parent.cond())
-      if (vertex == partition(0) && global.cond()) {
-        //println(this + ": sending Stop to " + parent)
-        parent ! "Stop"
-        //exit()
-        //println(self + ": we'd like to stop now")
-        self.stop()
-      }
+        // only worker which manages the first vertex evaluates
+        // the termination condition
+        if (vertex == partition(0) && global.cond()) {
+          println(this + ": sending Stop to " + parent)
+          parent ! "Stop"
+          self.stop()
+        }
     })
+
+    // Collect all messages produced in the parallel foreach...
+    allOutgoing = outgoingPerVertex.flatMap(x => x).toList
 
     incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
       override def default(v: Vertex[Data]) = List()

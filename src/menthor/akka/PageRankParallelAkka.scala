@@ -10,7 +10,7 @@ import scala.util.Sorting
 class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
   def numVertices = graph.vertices.size
-  
+
   def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
 
     if (superstep >= 1) {
@@ -79,26 +79,35 @@ object PageRank extends TicToc {
 
   import java.io.{ FileWriter, PrintWriter }
 
-  def runWikipediaRank(numIterations: Int, dataDir: String, numPages: Int, small: Boolean) {
+  /**
+   * Run page rank on given data.
+   * @param numIterations Number of iterations of the algorithm (30 is a good number to test).
+   * @param dataDir Directory where the data can be found (try data/ to test).
+   * @param numPages Number of pages to read in (try 1000-3000 to test).
+   */
+  def runWikipediaRank(numIterations: Int, dataDir: String, numPages: Int) {
     println("Reading wikipedia graph from file...")
-    //val lines = scala.io.Source.fromFile("testgraph.txt").getLines()
 
     tic
 
     val linesOrig = scala.io.Source.fromFile(dataDir + "links-sorted.txt").getLines()
-    val lines = if (small)
-      linesOrig.take(numPages)
-    else {
-      //TODO what is this??
-
-      // drop first 150'000 entries
-      linesOrig.drop(150000).take(numPages)
-    }
+    val lines = linesOrig.take(numPages)
     val (wikigraph, ga) = GraphReader.readGraph(lines)
     //GraphReader.printGraph(wikigraph)
-    
+
+    /**
+     * =====================================
+     * Change the Graph Operation Mode here!
+     * =====================================
+     * Default for use with Parallel 
+     * Pollections is the SingleWorkerMode.
+     * =====================================
+     */
     wikigraph.setOpMode(SingleWorkerMode)
-    
+    //        wikigraph.setOpMode(MultiWorkerMode)
+    //    wikigraph.setOpMode(FixedWorkerMode(1))
+    //    wikigraph.setOpMode(IAmLegionMode)
+
     println("#vertices: " + wikigraph.vertices.size)
 
     println("Building page title map...")
@@ -122,8 +131,13 @@ object PageRank extends TicToc {
     tic
 
     wikigraph.synchronized {
-      // The toList() call is expensive, however this is not measured
-      // as time spent on computation and therefore we don't care.
+      /*
+       * The toList() call is expensive, however this is not measured as time
+       * spent on computation and therefore we don't care. To fix this, write
+       * a sorting algorithm which relies purely on API provided by GenSeq.
+       * Doing this is about as fun as typing in the dark on an upside down
+       * keyboard using only your feet.
+       */
       val sorted = wikigraph.vertices.toList.sortWith((v1: Vertex[Double], v2: Vertex[Double]) => v1.value > v2.value)
       for (page <- sorted.take(10)) {
         println(names(page.label) + " has rank " + page.value)
@@ -133,44 +147,26 @@ object PageRank extends TicToc {
     wikigraph.terminate()
     toc("clean")
 
-    writeTimesLog("bench/PageRankParallelAkka_NonPar_SWM_" + numPages)
+    writeTimesLog("bench/AA_PC_1_" + numPages)
     println()
     printTimesLog
 
   }
 
-  import scala.collection.SeqLike
-  import scala.collection.generic.CanBuildFrom
-  import scala.math.Ordering
-
-  object QuickSort {
-    def sort[T, Coll](a: Coll)(implicit ev0: Coll <:< SeqLike[T, Coll],
-      cbf: CanBuildFrom[Coll, T, Coll],
-      n: Ordering[T]): Coll = {
-      import n._
-      if (a.length < 2)
-        a
-      else {
-        // We pick the first value for the pivot.
-        val pivot = a.head
-        val (lower: Coll, tmp: Coll) = a.partition(_ < pivot)
-        val (upper: Coll, same: Coll) = tmp.partition(_ > pivot)
-        val b = cbf()
-        b.sizeHint(a.length)
-        b ++= sort[T, Coll](lower)
-        b ++= same
-        b ++= sort[T, Coll](upper)
-        b.result
-      }
-    }
-  }
-
   def main(args: Array[String]) {
-    if (args.length >= 3) {
-      runWikipediaRank(args(0).toInt, args(1), args(2).toInt, true) // numPages = 20'000
-      //runPageRank(args(0).toInt)
+    if (args.length == 3) {
+      // Default: use all processors for parallel collections... 
+      runWikipediaRank(args(0).toInt, args(1), args(2).toInt)
+    } else if (args.length >= 4) {
+      // Use this for benchmarking/testing only...
+      println("----------------------------------------------------------")
+      println("Overriding Parallel Collections parallelism: " + args(3).toInt)
+      println("----------------------------------------------------------")
+      // Set the number of cores to use for parallel collections
+      scala.collection.parallel.ForkJoinTasks.defaultForkJoinPool.setParallelism(args(3).toInt)
+      runWikipediaRank(args(0).toInt, args(1), args(2).toInt)
     } else {
-      println("Usage: args[String] = <#iterations> <data_dir> <#pages>")
+      println("Usage: args[String] = <#iterations> <data_dir> <#pages> (<num_procs>)")
     }
   }
 
