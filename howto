@@ -1,0 +1,9 @@
+Start menthor like this:
+	scala -cp bin:config:lib/akka-actor-1.1.jar menthor.akka.PageRank 30 data/ 1000
+
+Parameters:
+30	is the number of iterations
+data/	the input folder
+1000	the input size in lines
+
+Have fun.
