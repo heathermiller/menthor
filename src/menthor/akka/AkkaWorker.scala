@@ -2,9 +2,10 @@ package menthor.akka
 
 import scala.collection.mutable.{ HashMap, Queue }
 import akka.actor.{ Actor, ActorRef }
-import akka.actor.Actor.actorOf
 import scala.collection.parallel.mutable.ParArray
 import scala.collection.GenSeq
+import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * @param graph      the graph for which the worker manages a partition of vertices
@@ -13,24 +14,32 @@ import scala.collection.GenSeq
 class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Graph[Data]) extends Actor {
   val queue = new Queue[Message[Data]]
   val later = new Queue[Message[Data]]
+  var zippedPartition = partition.zipWithIndex
   var numSubsteps = 0
   var step = 0
   var id = Graph.nextId
 
-  var incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
-    override def default(v: Vertex[Data]) = List()
+  var incoming = new collection.mutable.HashMap[Vertex[Data], ListBuffer[Message[Data]]]() {
+    override def default(v: Vertex[Data]) = collection.mutable.ListBuffer()
   }
+
+  //      var incoming = new collection.mutable.HashMap[Vertex[Data], List[Message[Data]]]() {
+  //        override def default(v: Vertex[Data]) = List()
+  //      }
 
   /**
    * Perform a superstep on the data held by this worker.
    */
   def superstep() {
     // remove all application-level messages from mailbox
+
     while (!queue.isEmpty) {
       val msg = queue.dequeue()
-      if (msg.step == step)
-        incoming(msg.dest) = msg :: incoming(msg.dest)
-      else
+      if (msg.step == step) {
+        //FIXME
+        //         incoming(msg.dest) = msg :: incoming(msg.dest)
+        incoming.getOrElseUpdate(msg.dest, ListBuffer()) += msg
+      } else
         later += msg
     }
     later foreach { m => queue += m }
@@ -40,15 +49,32 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
 
     var allOutgoing: List[Message[Data]] = List()
     var crunch: Option[Crunch[Data]] = None
-    var outgoingPerVertex: Array[List[Message[Data]]] = Array.fill[List[Message[Data]]](partition.size)(Nil)
+
+    // Version 1: Using Array of Lists
+    var outgoingPerVertex = Array.fill[List[Message[Data]]](partition.size)(Nil)
+
+    // Version 2: Using Array of Vectors
+    //var outgoingPerVertex = Array.fill[Vector[Message[Data]]](partition.size)(scala.collection.immutable.Vector.empty)
+
+    // Version 3:
+    //var outgoingPerVertex = ListBuffer.fill[List[Message[Data]]](partition.size)(Nil)
+
+    // Version 4:
+    //var outgoingPerVertex = ArrayBuffer.fill[List[Message[Data]]](partition.size)(Nil)
+
+    // Version 5:
+    //var outgoingPerVertex = Array.fill[ListBuffer[Message[Data]]](partition.size)(scala.collection.mutable.ListBuffer.empty)
+
+    // Version 6:
+    //var outgoingPerVertex = Array.fill[ArrayBuffer[Message[Data]]](partition.size)(scala.collection.mutable.ArrayBuffer.empty)
 
     /*
      * This is the main thing that is parallelized in the worker.
      */
-    partition.zipWithIndex.foreach({
+    zippedPartition.foreach({
       case (vertex, i) =>
 
-        val substeps = vertex.update(step - 1, incoming(vertex))
+        val substeps = vertex.update(step - 1, incoming(vertex).toList)
         val substep = substeps((step - 1) % substeps.size)
 
         ///////////////////////////////////////////////////////////
@@ -76,8 +102,16 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
           // set step field of outgoing messages to current step
           for (out <- outgoing) out.step = step
 
+          // Version 1,3,4:
           // This is a concurrent non-locking way to collect all our messages...
           outgoingPerVertex(i) = outgoing
+
+          // Version 2:
+          //import collection.breakOut
+          //outgoingPerVertex(i) = outgoing.map(x => x)(breakOut): Vector[Message[Data]]
+
+          // Version 5,6:
+          //outgoingPerVertex(i) ++= outgoing
 
         }
 
@@ -86,23 +120,25 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
         if (vertex == partition(0) && global.cond()) {
           println(this + ": sending Stop to " + parent)
           parent ! "Stop"
-          self.stop()
         }
     })
 
+    // Same for all versions
     // Collect all messages produced in the parallel foreach...
     allOutgoing = outgoingPerVertex.flatMap(x => x).toList
 
-    incoming = new HashMap[Vertex[Data], List[Message[Data]]]() {
-      override def default(v: Vertex[Data]) = List()
-    }
+    incoming.clear()
 
     if (crunch.isEmpty) {
       for (out <- allOutgoing) {
         if (out.dest.worker == self) { // mention in paper
-          incoming(out.dest) = out :: incoming(out.dest)
-        } else
+          //           incoming(out.dest) = out :: incoming(out.dest)
+          incoming.getOrElseUpdate(out.dest, ListBuffer()) += out
+
+        } else {
+          println("msg to foreign worker")
           out.dest.worker ! out
+        }
       }
       parent ! "Done" // parent checks for "Stop" message first
     } else {
@@ -110,6 +146,9 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
     }
   }
 
+  /* (non-Javadoc)
+   * @see akka.actor.Actor#receive()
+   */
   def receive = {
     case msg: Message[Data] =>
       queue += msg
@@ -128,9 +167,8 @@ class Worker[Data](parent: ActorRef, partition: GenSeq[Vertex[Data]], global: Gr
       superstep()
 
     case "Stop" =>
-      //exit()
-      //      println(self + ": we'd like to stop now")
-      self.stop()
+      // new since Akka 2.0
+      Graph.actorSystem.stop(self)
   }
 
 }

@@ -1,15 +1,13 @@
 package menthor.akka
 
-import scala.collection.mutable.{Map, HashMap}
+import scala.collection.mutable.{ Map, HashMap }
 import scala.collection.mutable.ListBuffer
-
 import scala.util.parsing.combinator._
 import scala.util.parsing.input.{ Reader }
 import scala.util.parsing.input.CharArrayReader.EofCh
-
 import akka.actor
 import actor.ActorRef
-import actor.Actor.actorOf
+import akka.actor.Props
 
 object GraphReader extends RegexParsers {
   override def skipWhitespace = false
@@ -26,13 +24,23 @@ object GraphReader extends RegexParsers {
 
   def tokenize(line: String, onError: String => Unit): List[String] =
     parse(edgeline, line.trim) match {
-      case Success(args, _)     => args
+      case Success(args, _) => args
       case NoSuccess(msg, rest) => onError(msg); List()
     }
 
   def readGraph(lines: Iterator[String]): (Graph[Double], ActorRef) = {
     var graph: Graph[Double] = null
-    val ga = actorOf({ graph = new Graph[Double]; graph })
+    
+    //AKKA2
+
+    // new since Akka 2.0
+    //    val ga = actorOf({ graph = new Graph[Double]; graph })
+    val ga = Graph.actorSystem.actorOf(Props({ graph = new Graph[Double](); graph }))
+
+    // This is the problematic part... Without the following line, the graph will be null.
+    // With this line we get an akka.actor.ActorInitializationException.
+
+    graph = new Graph[Double]()
 
     for (line <- lines) {
       val labels = tokenize(line)

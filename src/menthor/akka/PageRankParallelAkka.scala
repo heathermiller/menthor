@@ -3,9 +3,9 @@ package menthor.akka
 import scala.collection.mutable.{ Map, HashMap }
 import akka.actor
 import actor.ActorRef
-import actor.Actor.actorOf
 import benchmark.TicToc
 import scala.util.Sorting
+import akka.actor.Props
 
 class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
@@ -35,11 +35,15 @@ class PageRankVertex(label: String) extends Vertex[Double](label, 0.0d) {
 
 object PageRank extends TicToc {
 
+  var parLimit = -1
+
   def runPageRank(iterations: Int) {
     println("running PageRank...")
     println("Creating new graph...")
     var g: Graph[Double] = null
-    val ga = actorOf({ g = new Graph[Double]; g })
+    // new since Akka 2.0
+    val ga = Graph.actorSystem.actorOf(Props({ g = new Graph[Double]; g }))
+    //    val ga = actorOf({ g = new Graph[Double]; g })
 
     // a little web graph: BBC -> MS, EPFL -> BBC, PHILIPP -> BBC, PHILIPP -> EPFL
     val d1 = g.addVertex(new PageRankVertex("BBC"))
@@ -64,7 +68,10 @@ object PageRank extends TicToc {
       }
     }
 
-    ga.start()
+    //new since Akka 2.0
+    //    ga.start()
+    ga ! "start"
+
     g.iterate(iterations)
 
     println("values after propagation:")
@@ -99,16 +106,16 @@ object PageRank extends TicToc {
      * =====================================
      * Change the Graph Operation Mode here!
      * =====================================
-     * Default for use with Parallel 
-     * Pollections is the SingleWorkerMode.
+     * Default for use with Parallel
+     * Collections is the SingleWorkerMode.
      * =====================================
      */
     wikigraph.setOpMode(SingleWorkerMode)
-    //        wikigraph.setOpMode(MultiWorkerMode)
+    //    wikigraph.setOpMode(MultiWorkerMode)
     //    wikigraph.setOpMode(FixedWorkerMode(1))
     //    wikigraph.setOpMode(IAmLegionMode)
 
-    println("#vertices: " + wikigraph.vertices.size)
+    println("#vertices: " + wikigraph.getGraphSize)
 
     println("Building page title map...")
     val names: Map[String, String] = new HashMap[String, String] {
@@ -124,7 +131,10 @@ object PageRank extends TicToc {
     toc("I/O")
     tic
 
-    ga.start()
+    // new since Akka 2.0
+    //    ga.start()
+    ga ! "start"
+
     wikigraph.iterate(numIterations)
 
     toc("comp")
@@ -147,7 +157,14 @@ object PageRank extends TicToc {
     wikigraph.terminate()
     toc("clean")
 
-    writeTimesLog("bench/AA_PC_1_" + numPages)
+    // Print a log file...
+    var filename = "bench/AA_PC_SWM_improvedHashMap_"
+    if (parLimit != -1) {
+      writeTimesLog(filename + numPages + "_parLimit_" + parLimit)
+    } else {
+      writeTimesLog(filename + numPages)
+    }
+
     println()
     printTimesLog
 
@@ -164,6 +181,7 @@ object PageRank extends TicToc {
       println("----------------------------------------------------------")
       // Set the number of cores to use for parallel collections
       scala.collection.parallel.ForkJoinTasks.defaultForkJoinPool.setParallelism(args(3).toInt)
+      PageRank.parLimit = args(3).toInt
       runWikipediaRank(args(0).toInt, args(1), args(2).toInt)
     } else {
       println("Usage: args[String] = <#iterations> <data_dir> <#pages> (<num_procs>)")

@@ -4,11 +4,14 @@ import scala.collection.mutable.{ Map, HashMap }
 import scala.collection.mutable.ListBuffer
 import akka.actor
 import actor.ActorRef
-import actor.Actor.actorOf
 import java.util.concurrent.CountDownLatch
 import sun.reflect.generics.reflectiveObjects.NotImplementedException
 import scala.collection.GenSeq
 import scala.collection.parallel.mutable.ParArray
+import akka.actor.ActorSystem
+import akka.actor.ActorSystemImpl
+import com.typesafe.config.ConfigFactory
+import akka.actor.Props
 
 case class Message[Data](val source: Vertex[Data], val dest: Vertex[Data], val value: Data) {
   // TODO: for distribution need to change Vertex[Data] into vertex ID
@@ -108,6 +111,21 @@ abstract class Vertex[Data](val label: String, initialValue: Data) {
 }
 
 object Graph {
+
+  //   val customConf = ConfigFactory.parseString("""
+  //      akka.actor.deployment {
+  //        /my-service {
+  //          router = round-robin
+  //          nr-of-instances = 3
+  //        }
+  //      }
+  //      """)
+  //  val customConf = ConfigFactory.empty()
+  
+  // ConfigFactory.load sandwiches customConfig between default reference
+  // config and default overrides, and then resolves it.
+  val actorSystem = ActorSystem("main", ConfigFactory.empty())
+
   var count = 0
   def nextId = {
     count += 1
@@ -143,11 +161,9 @@ case object IAmLegionMode extends GraphOperatingMode
  */
 class Graph[Data] extends actor.Actor {
 
-  /**
-   * If one would wish to turn off parallel collections make the following collection a List.
-   */
-  var vertices: GenSeq[Vertex[Data]] = ParArray()
-  //  var vertices: GenSeq[Vertex[Data]] = List()
+  var vertices: GenSeq[Vertex[Data]] = null
+  var verticesBuildBuffer = collection.mutable.ArrayBuffer[Vertex[Data]]()
+
   var workers: List[ActorRef] = List()
   var allForemen: List[ActorRef] = List()
   var opmode: GraphOperatingMode = SingleWorkerMode
@@ -164,13 +180,26 @@ class Graph[Data] extends actor.Actor {
   var parent: CountDownLatch = null
 
   /**
+   * Returns the graphs size.
+   * @return number of vertices in this graph
+   */
+  def getGraphSize(): Int = {
+    if (vertices != null)
+      vertices.size
+    else if (verticesBuildBuffer != null)
+      verticesBuildBuffer.size
+    else
+      0
+  }
+
+  /**
    * Add a vertex to this graph.
    * @param v Vertex to add.
    * @return
    */
   def addVertex(v: Vertex[Data]): Vertex[Data] = {
     v.graph = this
-    vertices = v +: vertices
+    verticesBuildBuffer += v
     v
   }
 
@@ -187,47 +216,59 @@ class Graph[Data] extends actor.Actor {
    * @param graphSize
    */
   def createWorkers() {
+
+    /**
+     * If one would wish to turn off parallel collections remove the '.par' call.
+     */
+    // Create the parallel vertices collection from the build buffer.
+    vertices = verticesBuildBuffer.par
+    verticesBuildBuffer = null
+
     val numProcs = Runtime.getRuntime().availableProcessors()
     println("Available processors: " + numProcs)
 
     opmode match {
       case SingleWorkerMode => {
         println("Creating a single worker. partition size = graph size = " + vertices.size)
-        val worker = actorOf(new Worker(self, vertices, this))
+        //        val worker = actorOf(new Worker(self, vertices, this))
+        val worker = Graph.actorSystem.actorOf(Props(new Worker(self, vertices, this)))
         workers ::= worker
         for (v <- vertices)
           v.worker = worker
-        worker.start()
+        //        worker.start()
       }
       case MultiWorkerMode => {
         println("Creating one worker per core. #workers = " + numProcs)
         var partitions: List[GenSeq[Vertex[Data]]] = partitionData(vertices, numProcs)
         for (partition <- partitions) {
-          val worker = actorOf(new Worker(self, partition, this))
+          //          val worker = actorOf(new Worker(self, partition, this))
+          val worker = Graph.actorSystem.actorOf(Props(new Worker(self, vertices, this)))
           workers ::= worker
           for (v <- partition)
             v.worker = worker
-          worker.start()
+          //          worker.start()
         }
       }
       case FixedWorkerMode(fixedWorkerNo: Int) => {
         println("Creating fixed number of workers: " + fixedWorkerNo)
         var partitions: List[GenSeq[Vertex[Data]]] = partitionData(vertices, fixedWorkerNo)
         for (partition <- partitions) {
-          val worker = actorOf(new Worker(self, partition, this))
+          //          val worker = actorOf(new Worker(self, partition, this))
+          val worker = Graph.actorSystem.actorOf(Props(new Worker(self, vertices, this)))
           workers ::= worker
           for (v <- partition)
             v.worker = worker
-          worker.start()
+          //          worker.start()
         }
       }
       case IAmLegionMode => {
         println("Creating one worker per vertex. #workers = graph size = " + vertices.size)
         for (v <- vertices) {
-          val worker = actorOf(new Worker(self, List(v), this))
+          //          val worker = actorOf(new Worker(self, List(v), this))
+          val worker = Graph.actorSystem.actorOf(Props(new Worker(self, vertices, this)))
           workers ::= worker
           v.worker = worker
-          worker.start()
+          //          worker.start()
         }
       }
       case _ => throw new IllegalArgumentException("Unknown graph operating mode.")
@@ -269,7 +310,9 @@ class Graph[Data] extends actor.Actor {
         w ! "Stop"
       }
       // ...then stop yourself.
-      self.exit()
+      //      self.exit()
+      // new since Akka 2.0
+      Graph.actorSystem.stop(self)
 
     } else if ((numIterations == 0 || i <= numIterations) && !shouldFinish) {
       i += 1
@@ -302,7 +345,9 @@ class Graph[Data] extends actor.Actor {
   def receive = {
     case "Stop" =>
       println(self + ": we'd like to stop now")
-      self.stop()
+    // Nothing to do since Akka 2
+    //      self.stop()
+      Graph.actorSystem.shutdown()
 
     case StartPropagation(numIters, from) =>
       // This is called on start...
@@ -310,7 +355,7 @@ class Graph[Data] extends actor.Actor {
       numIterations = numIters
       createWorkers
 
-      become {
+      context.become {
         case "Stop" => // stop iterating
           shouldFinish = true
           nextIter()
@@ -405,11 +450,16 @@ object Test {
   def runTest1() {
     println("running test1...")
     var g: Graph[Double] = null
-    val ga = actorOf({ g = new Graph[Double]; g })
+    // new since Akka 2.0
+    val ga = Graph.actorSystem.actorOf(Props({ g = new Graph[Double]; g }))
+    //    val ga = actorOf({ g = new Graph[Double]; g })
     for (i <- 1 to 48) {
       g.addVertex(new Test1Vertex)
     }
-    ga.start()
+
+    //    ga.start()
+    ga ! "start"
+
     g.iterate(1)
     g.synchronized {
       for (v <- g.vertices) {
@@ -423,11 +473,16 @@ object Test {
   def runTest2() {
     println("running test2...")
     var g: Graph[Double] = null
-    val ga = actorOf({ g = new Graph[Double]; g })
+    // new since Akka 2.0
+    val ga = Graph.actorSystem.actorOf(Props({ g = new Graph[Double]; g }))
+    //    val ga = actorOf({ g = new Graph[Double]; g })
     for (i <- 1 to 10) {
       g.addVertex(new Test2Vertex)
     }
-    ga.start()
+
+    //    ga.start()
+    ga ! "start"
+
     g.iterate(3)
     g.synchronized {
       for (v <- g.vertices) {
