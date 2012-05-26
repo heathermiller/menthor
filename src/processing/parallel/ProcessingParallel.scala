@@ -164,11 +164,9 @@ class Graph[Data] extends Actor {
             
             if (!crunchResult.isEmpty)
               for (w <- workers) { // go to next superstep
-                // OK println("send to workers")
                 w ! crunchResult.get
               }
             else {
-              //println("not crunch!")
               for (w <- workers) { // go to next superstep
                 w ! "Next"
               }

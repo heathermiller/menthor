@@ -16,9 +16,7 @@ class Substep[Data](val stepfun: () => List[Message[Data]], val previous: Subste
     next
   }
   
-  // PG
   def crunchToOne(fun: (Data, Data) => Data): Substep[Data] = {
-    // OK !
     next = new CrunchToOneStep(fun, this)
     next
   }

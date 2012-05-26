@@ -125,9 +125,8 @@ object PageRank extends TicToc{
   }
 
   def main(args: Array[String]) {
-    //runWikipediaRank(args(0).toInt, args(1), args(2).toInt, true) // numPages = 20'000
-    //runWikipediaRank(10, "data/", 20000, true)
-    runPageRank(10)
+    runWikipediaRank(args(0).toInt, args(1), args(2).toInt, true) // numPages = 20'000
+    //runPageRank(args(0).toInt)
   }
 
 }
