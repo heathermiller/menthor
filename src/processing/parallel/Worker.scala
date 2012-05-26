@@ -20,6 +20,7 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
   }
 
   def superstep() {
+    //println(step + "super")
     // remove all application-level messages from mailbox
     var done = false
     while (!done) {
@@ -30,14 +31,15 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
           done = true
       }
     }
-
+    
     step += 1 // beginning of next superstep
 
     var allOutgoing: List[Message[Data]] = List()
-    var crunch: Option[Crunch[Data]] = None
+    var crunch: Option[AbstractCrunch[Data]] = None
 
     // iterate over all vertices that this worker manages
     for (vertex <- partition) {
+      //println("toto +" + vertex.label)
       // compute outgoing messages using application-level `update` method
       // and forward to parent
       // paper: obtain chain of closures again for new params!!
@@ -45,6 +47,8 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
       //println("#substeps = " + substeps.size)
       val substep = substeps((step - 1) % substeps.size)
 
+      //println(substep)
+      
       if (substep.isInstanceOf[CrunchStep[Data]]) {
         val crunchStep = substep.asInstanceOf[CrunchStep[Data]]
         // assume every vertex has crunch step at this point
@@ -52,9 +56,14 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
           // compute aggregated value
           val vertexValues = partition.map(v => v.value)
           val crunchResult = vertexValues.reduceLeft(crunchStep.cruncher)
-          crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
+          
+          if(substep.isInstanceOf[CrunchToOneStep[Data]])
+            crunch = Some(CrunchToOne(crunchStep.cruncher, crunchResult))
+          else
+            crunch = Some(Crunch(crunchStep.cruncher, crunchResult))
         }
       } else {
+        //println(vertex.value)
         //println("substep object for substep " + ((step - 1) % substeps.size) + ": " + substep)
         val outgoing = substep.stepfun()
         // set step field of outgoing messages to current step
@@ -91,6 +100,7 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
           //parent ! "DoneOutgoing"
 //      }
     } else
+      // We send the crunch result higher up
       parent ! crunch.get
   }
 
@@ -101,10 +111,20 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
 */
         loop {
           react {
+            
             case "Next" => // TODO: make it a class
               //println(this + ": received Next")
               superstep()
+              
+            case CrunchToOneResult(res: Data) if(id == 1) =>
+              // Only the first worker takes care of sending a message to the first vertex
+              // Maybe the first vertex is not in the first worker's partition but I don't think it matters...
+              val msgToOne = Message[Data](null, global.vertices(0), res)
+              msgToOne.step = step
+              this ! msgToOne
 
+              superstep()
+ 
             case CrunchResult(res: Data) =>
               //println(this + ": received CrunchResult")
               // deliver as incoming message to all vertices
@@ -116,8 +136,13 @@ class Worker[Data](parent: Actor, partition: List[Vertex[Data]], global: Graph[D
             // immediately start new superstep (explain in paper)
             superstep()
 
+
             case "Stop" =>
               exit()
+              
+            // It is for the other CrunchToOneResult            
+            case _ => 
+              superstep()
           }
         }
     //}
@@ -129,10 +154,24 @@ class Foreman(parent: Actor, var children: List[Actor]) extends Actor {
 
   def waitForRepliesFrom(children: List[Actor], response: Option[AnyRef]) {
     if (children.isEmpty) {
+      // We got all we needed from the children, we send the result to the graph
       parent ! response.get
     } else {
       react {
-        case c: Crunch[d] => // have to wait for results of all children
+        case c: CrunchToOne[d] => // same code as below !
+          val cruncher = c.cruncher
+          val crunchResult = c.crunchResult
+//          println(this + ": received " + c + " from " + sender)
+
+          if (response.isEmpty) {
+            waitForRepliesFrom(children.tail, Some(CrunchToOne(cruncher, crunchResult)))
+          } else {
+            val previousCrunchResult = response.get.asInstanceOf[CrunchToOne[d]].crunchResult
+            // aggregate previous result with new response
+            val newResponse = cruncher(crunchResult, previousCrunchResult)
+            waitForRepliesFrom(children.tail, Some(CrunchToOne(cruncher, newResponse)))
+          }
+        case c: Crunch[d] => // have to wait for results of all children, same code as above
           val cruncher = c.cruncher
           val crunchResult = c.crunchResult
 //          println(this + ": received " + c + " from " + sender)
@@ -172,6 +211,7 @@ class Foreman(parent: Actor, var children: List[Actor]) extends Actor {
           } else { // received from child
             val otherChildren = children.filterNot((child: Actor) => child == sender)
             val response: Option[AnyRef] = msg match {
+              case CrunchToOne(_, _) => Some(msg)
               case Crunch(_, _) => Some(msg)
               case otherwise => Some(msg)
             }

@@ -97,7 +97,7 @@ object PageRank extends TicToc{
       }
     }
     
-    val titles = scala.io.Source.fromFile(dataDir + "titles-sorted.txt").getLines()
+    val titles = scala.io.Source.fromFile(dataDir + "titles-sorted.txt")("UTF-8").getLines()
     for ((title, i) <- titles.take(400000) zipWithIndex)
       names.put("" + i, title)
     toc("I/O")
@@ -125,8 +125,9 @@ object PageRank extends TicToc{
   }
 
   def main(args: Array[String]) {
-    runWikipediaRank(args(0).toInt, args(1), args(2).toInt, true) // numPages = 20'000
-    //runPageRank(args(0).toInt)
+    //runWikipediaRank(args(0).toInt, args(1), args(2).toInt, true) // numPages = 20'000
+    //runWikipediaRank(10, "data/", 20000, true)
+    runPageRank(10)
   }
 
 }

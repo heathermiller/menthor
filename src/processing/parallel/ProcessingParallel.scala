@@ -64,6 +64,9 @@ class Graph[Data] extends Actor {
   var cond: () => Boolean = () => false
 
   //Debug.level = 3
+  
+  // Otherwise there are bug for some reason...
+  Graph.count = 0
 
   def addVertex(v: Vertex[Data]): Vertex[Data] = {
     v.graph = this
@@ -146,7 +149,7 @@ class Graph[Data] extends Actor {
           createWorkers()
           //for (w <- workers) { w ! "Init" }
 
-          var crunchResult: Option[Data] = None
+          var crunchResult: Option[AbstractCrunchResult[Data]] = None
 
           var shouldFinish = false
           var i = 1
@@ -161,19 +164,25 @@ class Graph[Data] extends Actor {
             
             if (!crunchResult.isEmpty)
               for (w <- workers) { // go to next superstep
-                w ! CrunchResult(crunchResult.get)
+                // OK println("send to workers")
+                w ! crunchResult.get
               }
-            else
+            else {
+              //println("not crunch!")
               for (w <- workers) { // go to next superstep
                 w ! "Next"
               }
-
+            }
+              
             var numDone = 0
             var numTotal: Int = workers.size
             if (numTotal < 100) numTotal = 100
 
             var cruncher: Option[(Data, Data) => Data] = None
             var workerResults: List[Data] = List()
+            
+            // Indicates if we are in a crunchToOne step or not
+            var toOne = false
 
             for (w <- workers) {
               receive {
@@ -181,9 +190,17 @@ class Graph[Data] extends Actor {
                   //println("should stop now (received from " + sender + ")")
                   shouldFinish = true
 
-                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
-                  if (cruncher.isEmpty)
+                case CrunchToOne(fun: ((Data, Data) => Data), workerResult: Data) =>
+                  toOne = true
+                  if(cruncher.isEmpty) {
                     cruncher = Some(fun)
+                  }
+                  workerResults ::= workerResult
+                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
+                  toOne = false
+                  if (cruncher.isEmpty) {
+                    cruncher = Some(fun)
+                  }
                   workerResults ::= workerResult
 
                 case "Done" =>
@@ -197,7 +214,17 @@ class Graph[Data] extends Actor {
             if (!shouldFinish) {
               // are we inside a crunch step?
               if (!cruncher.isEmpty) {
-                crunchResult = Some(workerResults.reduceLeft(cruncher.get))
+                
+                // We compute the reduces value coming from all workers
+                val reduceRes = workerResults.reduceLeft(cruncher.get)
+                
+                if(toOne) {
+                  // We are in a crunchToOne step so we make a crunchToOneResult
+                  crunchResult = Some(CrunchToOneResult(reduceRes))
+                }
+                else {
+                  crunchResult = Some(CrunchResult(reduceRes))
+                }
               } else {
                 crunchResult = None
 
@@ -239,86 +266,3 @@ class Graph[Data] extends Actor {
   }
 }
 
-object Test1 {
-  var count = 0
-  def nextcount: Int = {
-    count += 1
-    count
-  }
-}
-
-class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
-    {
-      value += 1
-      List()
-    }
-  }
-}
-
-      //, (res: Double, vertices: (Vertex, Vertex)) => {
-      // (T, (Vertex, Vertex)) => List[Message[Data]]
-
-      // (Vertex, Vertex) => (T, (Vertex, Vertex))
-      //(v1.value + v2.value, (v1, v2))
-
-class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
-  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
-    {
-      value += 1
-      List()
-    } crunch((v1: Double, v2: Double) => v1 + v2) then {
-      // result of crunch should be here as incoming message
-      incoming match {
-        case List(crunchResult) =>
-          value = crunchResult.value
-        case List() =>
-          // do nothing
-      }
-      List()
-    }
-  }
-}
-
-object Test {
-
-  def runTest1() {
-    println("running test1...")
-    val g = new Graph[Double]
-    for (i <- 1 to 48) {
-      g.addVertex(new Test1Vertex)
-    }
-    g.start()
-    g.iterate(1)
-    g.synchronized {
-      for (v <- g.vertices) {
-        if (v.value < 1) throw new Exception
-      }
-    }
-    g.terminate()
-    println("test1 OK")
-  }
-
-  def runTest2() {
-    println("running test2...")
-    val g = new Graph[Double]
-    for (i <- 1 to 48) {
-      g.addVertex(new Test2Vertex)
-    }
-    g.start()
-    g.iterate(3)
-    g.synchronized {
-      for (v <- g.vertices) {
-        if (v.value < 10) throw new Exception
-      }
-    }
-    g.terminate()
-    println("test2 OK")
-  }
-
-  def main(args: Array[String]) {
-    runTest1()
-    runTest2()
-  }
-
-}
