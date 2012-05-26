@@ -266,3 +266,122 @@ class Graph[Data] extends Actor {
   }
 }
 
+
+object Test1 {
+  var count = 0
+  def nextcount: Int = {
+    count += 1
+    count
+  }
+}
+
+class Test1Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+    {
+      value += 1
+      List()
+    }
+  }
+}
+
+      //, (res: Double, vertices: (Vertex, Vertex)) => {
+      // (T, (Vertex, Vertex)) => List[Message[Data]]
+
+      // (Vertex, Vertex) => (T, (Vertex, Vertex))
+      //(v1.value + v2.value, (v1, v2))
+
+class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = {
+    {
+      value += 1
+      List()
+    } crunch((v1: Double, v2: Double) => v1 + v2) then {
+      // result of crunch should be here as incoming message
+      incoming match {
+        case List(crunchResult) =>
+          value = crunchResult.value
+        case List() =>
+          // do nothing
+      }
+      List()
+    }
+  }
+}
+
+class Test3Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = 
+    {
+      value += 1
+      List()
+    } crunchToOne((v1: Double, v2: Double) => v1 + v2) then {
+      //if(this == graph.vertices(0)) {
+        incoming match {
+          case List(crunchResult) =>
+            value = crunchResult.value
+          case _ =>
+        }
+      //}
+      List()
+    } then {
+      List()
+    }
+  
+}
+
+object Test {
+
+  def runTest1() {
+    println("running test1...")
+    val g = new Graph[Double]
+    for (i <- 1 to 48) {
+      g.addVertex(new Test1Vertex)
+    }
+    g.start()
+    g.iterate(1)
+    g.synchronized {
+      for (v <- g.vertices) {
+        if (v.value < 1) throw new Exception
+      }
+    }
+    g.terminate()
+    println("test1 OK")
+  }
+
+  def runTest2() {
+    println("running test2...")
+    val g = new Graph[Double]
+    for (i <- 1 to 48) {
+      g.addVertex(new Test2Vertex)
+    }
+    g.start()
+    g.iterate(3)
+    g.synchronized {
+      for (v <- g.vertices) {
+        if (v.value < 10) throw new Exception
+      }
+    }
+    g.terminate()
+    println("test2 OK")
+  }
+  
+  def testCrunchToOne() {
+    val g = new Graph[Double]
+    for(i <- 1 to 48) {
+      g.addVertex(new Test3Vertex)
+    }
+    g.start()
+    g.iterate(4)
+    g.synchronized {
+      assert(g.vertices.filter(_.value == 1).length == 47)
+      assert(g.vertices.filter(_.value == 48).length == 1)
+    }
+    g.terminate
+  }
+
+  def main(args: Array[String]) {
+    runTest1()
+    runTest2()
+    testCrunchToOne()
+  }
+
+}
