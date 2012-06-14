@@ -64,6 +64,9 @@ class Graph[Data] extends Actor {
   var cond: () => Boolean = () => false
 
   //Debug.level = 3
+  
+  // Otherwise there are bug for some reason...
+  Graph.count = 0
 
   def addVertex(v: Vertex[Data]): Vertex[Data] = {
     v.graph = this
@@ -146,7 +149,7 @@ class Graph[Data] extends Actor {
           createWorkers()
           //for (w <- workers) { w ! "Init" }
 
-          var crunchResult: Option[Data] = None
+          var crunchResult: Option[AbstractCrunchResult[Data]] = None
 
           var shouldFinish = false
           var i = 1
@@ -161,19 +164,23 @@ class Graph[Data] extends Actor {
             
             if (!crunchResult.isEmpty)
               for (w <- workers) { // go to next superstep
-                w ! CrunchResult(crunchResult.get)
+                w ! crunchResult.get
               }
-            else
+            else {
               for (w <- workers) { // go to next superstep
                 w ! "Next"
               }
-
+            }
+              
             var numDone = 0
             var numTotal: Int = workers.size
             if (numTotal < 100) numTotal = 100
 
             var cruncher: Option[(Data, Data) => Data] = None
             var workerResults: List[Data] = List()
+            
+            // Indicates if we are in a crunchToOne step or not
+            var toOne = false
 
             for (w <- workers) {
               receive {
@@ -181,9 +188,17 @@ class Graph[Data] extends Actor {
                   //println("should stop now (received from " + sender + ")")
                   shouldFinish = true
 
-                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
-                  if (cruncher.isEmpty)
+                case CrunchToOne(fun: ((Data, Data) => Data), workerResult: Data) =>
+                  toOne = true
+                  if(cruncher.isEmpty) {
                     cruncher = Some(fun)
+                  }
+                  workerResults ::= workerResult
+                case Crunch(fun: ((Data, Data) => Data), workerResult: Data) =>
+                  toOne = false
+                  if (cruncher.isEmpty) {
+                    cruncher = Some(fun)
+                  }
                   workerResults ::= workerResult
 
                 case "Done" =>
@@ -197,7 +212,17 @@ class Graph[Data] extends Actor {
             if (!shouldFinish) {
               // are we inside a crunch step?
               if (!cruncher.isEmpty) {
-                crunchResult = Some(workerResults.reduceLeft(cruncher.get))
+                
+                // We compute the reduces value coming from all workers
+                val reduceRes = workerResults.reduceLeft(cruncher.get)
+                
+                if(toOne) {
+                  // We are in a crunchToOne step so we make a crunchToOneResult
+                  crunchResult = Some(CrunchToOneResult(reduceRes))
+                }
+                else {
+                  crunchResult = Some(CrunchResult(reduceRes))
+                }
               } else {
                 crunchResult = None
 
@@ -238,6 +263,7 @@ class Graph[Data] extends Actor {
     this ! "Stop"
   }
 }
+
 
 object Test1 {
   var count = 0
@@ -280,6 +306,26 @@ class Test2Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
   }
 }
 
+class Test3Vertex extends Vertex[Double]("v" + Test1.nextcount, 0.0d) {
+  def update(superstep: Int, incoming: List[Message[Double]]): Substep[Double] = 
+    {
+      value += 1
+      List()
+    } crunchToOne((v1: Double, v2: Double) => v1 + v2) then {
+      //if(this == graph.vertices(0)) {
+        incoming match {
+          case List(crunchResult) =>
+            value = crunchResult.value
+          case _ =>
+        }
+      //}
+      List()
+    } then {
+      List()
+    }
+  
+}
+
 object Test {
 
   def runTest1() {
@@ -315,10 +361,25 @@ object Test {
     g.terminate()
     println("test2 OK")
   }
+  
+  def testCrunchToOne() {
+    val g = new Graph[Double]
+    for(i <- 1 to 48) {
+      g.addVertex(new Test3Vertex)
+    }
+    g.start()
+    g.iterate(4)
+    g.synchronized {
+      assert(g.vertices.filter(_.value == 1).length == 47)
+      assert(g.vertices.filter(_.value == 48).length == 1)
+    }
+    g.terminate
+  }
 
   def main(args: Array[String]) {
     runTest1()
     runTest2()
+    testCrunchToOne()
   }
 
 }

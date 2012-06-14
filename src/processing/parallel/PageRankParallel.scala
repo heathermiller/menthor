@@ -97,7 +97,7 @@ object PageRank extends TicToc{
       }
     }
     
-    val titles = scala.io.Source.fromFile(dataDir + "titles-sorted.txt").getLines()
+    val titles = scala.io.Source.fromFile(dataDir + "titles-sorted.txt")("UTF-8").getLines()
     for ((title, i) <- titles.take(400000) zipWithIndex)
       names.put("" + i, title)
     toc("I/O")
